@@ -1,0 +1,93 @@
+[project]
+name = "dj-pydantic-qparams"
+version = "0.1.0"
+description = "Django query parameter validation using Pydantic, inspired by FastAPI"
+readme = "README.md"
+authors = [
+    { name = "Diego Margoni", email = "diegof.university@gmail.com" }
+]
+license = { text = "MIT" }
+keywords = ["django", "drf", "pydantic", "query", "parameters", "validation", "fastapi"]
+classifiers = [
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 3.2",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Intended Audience :: Developers",
+    "Framework :: Django",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+requires-python = ">=3.9"
+dependencies = [
+    "django>=3.2",
+    "djangorestframework>=3.15.2",
+    "pydantic>=2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dj_pydantic_qparams"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+python_files = "test_*.py"
+testpaths = ["tests"]
+pythonpath = ["."]
+django_find_project = false
+
+
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+lint.select = ["E", "F", "B", "I", "N", "UP", "ANN", "COM", "RUF", "PT", "PTH", "PYI", "TCH"]
+lint.ignore = ["ANN002", "ANN003"]
+lint.fixable = ["ALL"]
+lint.unfixable = []
+exclude = [
+    "docs",
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "build",
+    "dist",
+]
+
+[lint.isort]
+known-first-party = ["dj_pydantic_qparams"]
+
+[tool.mypy]
+python_version = "3.9"
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+check_untyped_defs = false
+
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=6.0.0",
+    "pytest-django>=4.10.0",
+    "ruff>=0.9.10",
+    "ipdb>=0.13.13",
+    "mypy>=1.15.0",
+    "pre-commit>=4.2.0",
+]
+
+[project.urls]
+Homepage = ""
+Documentation = ""
+Issues = ""
