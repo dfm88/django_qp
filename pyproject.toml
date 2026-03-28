@@ -15,22 +15,24 @@ classifiers = [
     "Framework :: Django :: 4.2",
     "Framework :: Django :: 5.0",
     "Framework :: Django :: 5.1",
+    "Framework :: Django :: 5.2",
     "Intended Audience :: Developers",
-    "Framework :: Django",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
-requires-python = ">=3.9"
+requires-python = ">=3.10,<3.15"
 dependencies = [
-    "django>=3.2",
-    "djangorestframework>=3.15.2",
+    "django>=3.2,<7.0",
     "pydantic>=2.0",
 ]
+
+[project.optional-dependencies]
+drf = ["djangorestframework>=3.15.2"]
 
 [build-system]
 requires = ["hatchling"]
@@ -45,13 +47,16 @@ python_files = "test_*.py"
 testpaths = ["tests"]
 pythonpath = ["."]
 django_find_project = false
+filterwarnings = [
+    "ignore:Converter .* is already registered:DeprecationWarning",
+]
 
 
 [tool.ruff]
 line-length = 110
-target-version = "py39"
+target-version = "py310"
 lint.select = ["E", "F", "B", "I", "N", "UP", "ANN", "COM", "RUF", "PT", "PTH", "PYI", "TCH"]
-lint.ignore = ["ANN002", "ANN003", "UP006", "UP035", "ANN401"]
+lint.ignore = ["ANN002", "ANN003", "ANN401"]
 lint.fixable = ["ALL"]
 lint.unfixable = []
 exclude = [
@@ -68,7 +73,7 @@ exclude = [
 known-first-party = ["django_qp"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -78,6 +83,7 @@ check_untyped_defs = false
 
 [dependency-groups]
 dev = [
+    "djangorestframework>=3.15.2",
     "pytest>=8.3.5",
     "pytest-cov>=6.0.0",
     "pytest-django>=4.10.0",
@@ -85,6 +91,8 @@ dev = [
     "ipdb>=0.13.13",
     "mypy>=1.15.0",
     "pre-commit>=4.2.0",
+    "tox>=4.0",
+    "tox-uv>=1.0",
 ]
 
 [project.urls]

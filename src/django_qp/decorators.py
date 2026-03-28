@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import functools
-from collections.abc import Mapping
-from typing import Any, Callable, Dict, Optional, Type, Union, cast, overload
+from collections.abc import Callable, Mapping
+from typing import Any, cast, overload
 
 from django.http import HttpRequest
 from pydantic import BaseModel
@@ -10,11 +12,11 @@ from .exceptions import QueryParamsError
 from .internal_typing import EnhancedHttpRequest, QParamsTypeCl
 
 # Type for model resolver functions
-ModelResolver = Callable[[HttpRequest], Optional[Type[BaseModel]]]
+ModelResolver = Callable[[HttpRequest], type[BaseModel] | None]
 # Type for method-specific model mappings
-MethodModelMap = Mapping[str, Type[BaseModel]]
+MethodModelMap = Mapping[str, type[BaseModel]]
 # Combined type for model parameter
-ModelArg = Union[Type[BaseModel], MethodModelMap, ModelResolver]
+ModelArg = type[BaseModel] | MethodModelMap | ModelResolver
 
 # Define ViewFunc type for better readability
 ViewFunc = Callable[[HttpRequest], Any]
@@ -24,7 +26,7 @@ EnhancedViewFunc = Callable[[EnhancedHttpRequest[QParamsTypeCl]], Any]
 def _get_model_for_request(
     model_arg: ModelArg,
     request: HttpRequest,
-) -> Optional[Type[BaseModel]]:
+) -> type[BaseModel] | None:
     """
     Resolve the appropriate model for the current request.
 
@@ -40,9 +42,8 @@ def _get_model_for_request(
         return model_arg
 
     # Case 2: Method-to-model mapping dictionary
-    elif isinstance(model_arg, dict):
-        # Get method name and convert to uppercase
-        method = request.method and request.method.lower()
+    if isinstance(model_arg, dict):
+        method = (request.method and request.method.lower()) or ""
         # Try to get a model specifically for this method
         model = model_arg.get(method)
         if model is not None:
@@ -51,19 +52,20 @@ def _get_model_for_request(
         return model_arg.get("")
 
     # Case 3: Callable resolver function
-    elif callable(model_arg):
-        return model_arg(request)
+    if callable(model_arg):
+        resolver = cast(ModelResolver, model_arg)
+        return resolver(request)
 
     return None
 
 
 @overload
 def validate_query_params(
-    model: Type[QParamsTypeCl],
+    model: type[QParamsTypeCl],
     error_status_code: int = 422,
     error_title: str = "Validation Error",
-    field_error_messages: Optional[Dict[str, Dict[str, str]]] = None,
-    field_error_status_codes: Optional[Dict[str, int]] = None,
+    field_error_messages: dict[str, dict[str, str]] | None = None,
+    field_error_status_codes: dict[str, int] | None = None,
 ) -> Callable[[ViewFunc], Callable[[HttpRequest], Any]]: ...
 
 
@@ -72,8 +74,8 @@ def validate_query_params(
     model: MethodModelMap,
     error_status_code: int = 422,
     error_title: str = "Validation Error",
-    field_error_messages: Optional[Dict[str, Dict[str, str]]] = None,
-    field_error_status_codes: Optional[Dict[str, int]] = None,
+    field_error_messages: dict[str, dict[str, str]] | None = None,
+    field_error_status_codes: dict[str, int] | None = None,
 ) -> Callable[[ViewFunc], Callable[[HttpRequest], Any]]: ...
 
 
@@ -82,8 +84,8 @@ def validate_query_params(
     model: ModelResolver,
     error_status_code: int = 422,
     error_title: str = "Validation Error",
-    field_error_messages: Optional[Dict[str, Dict[str, str]]] = None,
-    field_error_status_codes: Optional[Dict[str, int]] = None,
+    field_error_messages: dict[str, dict[str, str]] | None = None,
+    field_error_status_codes: dict[str, int] | None = None,
 ) -> Callable[[ViewFunc], Callable[[HttpRequest], Any]]: ...
 
 
@@ -91,9 +93,9 @@ def validate_query_params(
     model: ModelArg,
     error_status_code: int = 422,
     error_title: str = "Validation Error",
-    field_error_messages: Optional[Dict[str, Dict[str, str]]] = None,
-    field_error_status_codes: Optional[Dict[str, int]] = None,
-) -> Callable[[ViewFunc], Callable]:
+    field_error_messages: dict[str, dict[str, str]] | None = None,
+    field_error_status_codes: dict[str, int] | None = None,
+) -> Callable[[ViewFunc], Callable[..., Any]]:
     """
     Decorator to validate query parameters using Pydantic models.
 
@@ -126,10 +128,9 @@ def validate_query_params(
     field_error_messages = field_error_messages or {}
     field_error_status_codes = field_error_status_codes or {}
 
-    def decorator(view_func: ViewFunc) -> Callable:
+    def decorator(view_func: ViewFunc) -> Callable[..., Any]:
         @functools.wraps(view_func)
         def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> Any:
-            # Check if we're in a DRF context
             is_drf = is_drf_request(request)
 
             # Get the appropriate model for this request
@@ -156,6 +157,6 @@ def validate_query_params(
                     field_error_status_codes=field_error_status_codes,
                 )
 
-        return cast(Callable, wrapper)
+        return wrapper
 
     return decorator

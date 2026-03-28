@@ -1,14 +1,15 @@
-from typing import Any, ClassVar, Dict, Generic, Optional, Union
+from __future__ import annotations
 
-from django.http import HttpRequest, JsonResponse
+from typing import TYPE_CHECKING, Any, ClassVar, Generic
+
 from pydantic import BaseModel
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.viewsets import ViewSetMixin
 
 from .core import create_error_response, process_query_params
 from .exceptions import QueryParamsError
 from .internal_typing import ErrorList, QParamsTypeCl
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest, JsonResponse
 
 
 class QueryParamsMixinView(Generic[QParamsTypeCl]):
@@ -23,22 +24,20 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
         validated_params: The validated query parameters instance.
         error_status_code: HTTP status code to use for validation errors (default: 422).
         error_title: Title to include in error responses (default: "Validation Error").
-        error_msg_format: Format string for error message (default: "{field}: {message}").
         field_error_messages: Dict mapping field names to custom error messages.
         field_error_status_codes: Dict mapping field names to custom HTTP status codes.
     """
 
-    validated_params_model: Optional[type[QParamsTypeCl]] = None
-    validated_params: Optional[QParamsTypeCl] = None
+    validated_params_model: type[QParamsTypeCl] | None = None
+    validated_params: QParamsTypeCl | None = None
 
     # Customizable error response settings
     error_status_code: int = 422
     error_title: str = "Validation Error"
-    error_msg_format: str = "{field}: {message}"
-    field_error_messages: ClassVar[Optional[Dict[str, Dict[str, str]]]] = None
-    field_error_status_codes: ClassVar[Optional[Dict[str, int]]] = None
+    field_error_messages: ClassVar[dict[str, dict[str, str]] | None] = None
+    field_error_status_codes: ClassVar[dict[str, int] | None] = None
 
-    def get_query_params_class(self, action: Union[str, None]) -> Optional[type[QParamsTypeCl]]:
+    def get_query_params_class(self, action: str | None) -> type[QParamsTypeCl] | None:
         """
         Get the query parameters model class.
         Override this method to provide dynamic model selection based on request or other factors.
@@ -49,7 +48,7 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
         return self.validated_params_model
 
     @staticmethod
-    def _validate_model(model: Union[BaseModel, object]) -> bool:
+    def _validate_model(model: BaseModel | object) -> bool:
         """
         Validate that the provided model is a Pydantic BaseModel subclass.
 
@@ -61,29 +60,30 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
         """
         return model is not None and isinstance(model, type) and issubclass(model, BaseModel)
 
-    def create_error_response(self, errors: list[ErrorList]) -> Union[JsonResponse, Response]:
+    def create_error_response(self, errors: list[ErrorList]) -> JsonResponse:
         """
-        Create an appropriate error response based on the view type.
+        Create an error response for validation failures.
+
+        Always returns a JsonResponse because this runs inside dispatch(),
+        before DRF's content negotiation pipeline sets up renderers.
+        A plain JsonResponse works in both Django and DRF contexts.
 
         Args:
             errors: List of Pydantic error dictionaries
 
         Returns:
-            Either a DRF Response or Django JsonResponse with error details
+            Django JsonResponse with error details
         """
-        # Determine if this is a DRF view
-        is_drf = isinstance(self, (APIView, ViewSetMixin))
-
         return create_error_response(
             errors=errors,
             error_title=self.error_title,
             error_status_code=self.error_status_code,
-            is_drf=is_drf,
+            is_drf=False,
             field_error_messages=self.field_error_messages,
             field_error_status_codes=self.field_error_status_codes,
         )
 
-    def probe_action(self) -> Optional[str]:
+    def probe_action(self) -> str | None:
         """
         Determine the current action based on request method and action_map.
         """
@@ -102,7 +102,7 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
 
         return None
 
-    def dispatch(self, request: HttpRequest, *args, **kwargs) -> Any:
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Any:
         """
         Process query params before view method execution.
 

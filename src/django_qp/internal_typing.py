@@ -6,12 +6,12 @@ from pydantic_core import ErrorDetails
 
 # Type variable for Pydantic models
 QParamsTypeCl = TypeVar("QParamsTypeCl", bound=BaseModel)
-# Type alias for model type
-ModelType = type[QParamsTypeCl]
 
 
 # Enhanced HttpRequest type with validated_params
 class EnhancedHttpRequest(HttpRequest, Generic[QParamsTypeCl]):
+    """HttpRequest with a typed `validated_params` attribute."""
+
     validated_params: QParamsTypeCl
 
 
@@ -20,6 +20,3 @@ ErrorList = ErrorDetails
 
 # Type for error dictionaries
 ErrorDict = dict[str, list[str]]
-
-# Type for query params models mapping
-QueryParamsModelMap = dict[str, type[BaseModel]]

@@ -5,12 +5,18 @@ from conftest import (
     MockParams,
 )
 from django.http import HttpRequest, HttpResponse
+from django.test import Client
 from django.views import View
-from rest_framework.response import Response
-from rest_framework.test import APIClient
-from rest_framework.views import APIView
 
+from django_qp._compat import HAS_DRF
 from django_qp.mixins import QueryParamsMixinView
+
+if HAS_DRF:
+    from rest_framework.response import Response
+    from rest_framework.test import APIClient
+    from rest_framework.views import APIView
+
+drf_required = pytest.mark.skipif(not HAS_DRF, reason="DRF not installed")
 
 
 class BasicDjangoView(QueryParamsMixinView[MockParams], View):
@@ -24,21 +30,23 @@ class BasicDjangoView(QueryParamsMixinView[MockParams], View):
         return HttpResponse(f"name={params.name}, age={params.age}")
 
 
-class BasicDRFView(QueryParamsMixinView, APIView):
-    """Basic DRF view with query parameter validation."""
+if HAS_DRF:
 
-    validated_params_model = MockParams
+    class BasicDRFView(QueryParamsMixinView, APIView):
+        """Basic DRF view with query parameter validation."""
 
-    def get(self, request: HttpRequest, *args, **kwargs) -> Response:
-        """Handle GET request and return user details in JSON format."""
-        params = self.validated_params
-        return Response(
-            {
-                "name": params.name,
-                "age": params.age,
-                "tags": params.tags,
-            },
-        )
+        validated_params_model = MockParams
+
+        def get(self, request: HttpRequest, *args, **kwargs) -> Response:
+            """Handle GET request and return user details in JSON format."""
+            params = self.validated_params
+            return Response(
+                {
+                    "name": params.name,
+                    "age": params.age,
+                    "tags": params.tags,
+                },
+            )
 
 
 @pytest.mark.django_db
@@ -50,7 +58,7 @@ class TestDjangoViews:
             "post",
         ],
     )
-    def test_valid_params(self, client: APIClient, http_method: str) -> None:
+    def test_valid_params(self, client: Client, http_method: str) -> None:
         """Test Django view with valid query parameters."""
         response = getattr(client, http_method)(
             "/test/?name=John&age=25&tags=python,django",
@@ -58,19 +66,20 @@ class TestDjangoViews:
         assert response.status_code == 200
         assert "name=John, age=25" in response.content.decode()
 
-    def test_invalid_params(self, client: APIClient) -> None:
+    def test_invalid_params(self, client: Client) -> None:
         """Test Django view with invalid query parameters."""
         response = client.get("/test/", {"name": "John", "age": "invalid"})
         assert response.status_code == 422
         assert "error" in response.content.decode()
 
-    def test_missing_required_param(self, client: APIClient) -> None:
+    def test_missing_required_param(self, client: Client) -> None:
         """Test Django view with missing required query parameter."""
         response = client.get("/test/", {"age": "25"})
         assert response.status_code == 422
         assert "error" in response.content.decode()
 
 
+@drf_required
 @pytest.mark.django_db
 class TestDRFViews:
     """Test DRF view with valid query parameters."""
@@ -105,6 +114,7 @@ class TestDRFViews:
         assert "error" in response.content.decode()
 
 
+@drf_required
 @pytest.mark.django_db
 class TestViewSets:
     """Test ViewSets with various query parameters."""
@@ -195,6 +205,7 @@ class TestViewSets:
         }
 
 
+@drf_required
 @pytest.mark.parametrize(
     "method",
     [
@@ -202,9 +213,10 @@ class TestViewSets:
         "post",
     ],
 )
-def test_api_function_view_valid_params(client: APIClient, method: str) -> None:
+def test_api_function_view_valid_params(client: Client, method: str) -> None:
     """Test API function-based view with valid query parameters with a single model."""
-    response = getattr(client, method)(
+    api_client = APIClient()
+    response = getattr(api_client, method)(
         "/api/test-func/?name=John&age=25",
     )
     assert response.status_code == 200
@@ -213,6 +225,7 @@ def test_api_function_view_valid_params(client: APIClient, method: str) -> None:
     assert response.data["method"] == method.upper()
 
 
+@drf_required
 @pytest.mark.parametrize(
     "method",
     [
@@ -220,9 +233,10 @@ def test_api_function_view_valid_params(client: APIClient, method: str) -> None:
         "post",
     ],
 )
-def test_api_function_view_invalid_params(client: APIClient, method: str) -> None:
+def test_api_function_view_invalid_params(client: Client, method: str) -> None:
     """Test API function-based view with invalid query parameters with a single model."""
-    response = getattr(client, method)(
+    api_client = APIClient()
+    response = getattr(api_client, method)(
         "/api/test-func/?name=John&age=invalid",
     )
     assert response.status_code == 422
@@ -237,6 +251,7 @@ def test_api_function_view_invalid_params(client: APIClient, method: str) -> Non
     }
 
 
+@drf_required
 @pytest.mark.django_db
 class TestCustomErrorHandling:
     """Test custom error handling and status codes."""
@@ -281,44 +296,46 @@ class TestCustomErrorHandling:
 class TestMethodSpecificViews:
     """Test views with method-specific validation."""
 
-    def test_get_method_validation(self, client: APIClient) -> None:
+    def test_get_method_validation(self, client: Client) -> None:
         """Test GET request with method-specific validation."""
         response = client.get("/method-specific/?filter=active&sort_by=name")
         assert response.status_code == 200
         assert "filter=active, sort_by=name" in response.content.decode()
 
-    def test_post_method_validation(self, client: APIClient) -> None:
+    def test_post_method_validation(self, client: Client) -> None:
         """Test POST request with method-specific validation."""
         response = client.post("/method-specific/?data=test_data&priority=3")
         assert response.status_code == 200
         assert "data=test_data, priority=3" in response.content.decode()
 
-    def test_get_method_validation_error(self, client: APIClient) -> None:
+    def test_get_method_validation_error(self, client: Client) -> None:
         """Test GET request with invalid parameters."""
         response = client.get("/method-specific/?invalid=param")
         assert response.status_code == 422
         error_data = response.json()
         assert "filter" in error_data["errors"]
 
-    def test_post_method_validation_error(self, client: APIClient) -> None:
+    def test_post_method_validation_error(self, client: Client) -> None:
         """Test POST request with invalid parameters."""
         response = client.post("/method-specific/?data=test&priority=10")
         assert response.status_code == 422
         error_data = response.json()
         assert "priority" in error_data["errors"]
 
-    def test_fallback_method_validation(self, client: APIClient) -> None:
+    def test_fallback_method_validation(self, client: Client) -> None:
         """Test fallback to default model for unmapped methods."""
         response = client.put("/method-specific/?name=John&age=25")
         assert response.status_code == 200
         assert "name=John, age=25" in response.content.decode()
 
 
+@drf_required
 class TestApiMethodSpecificViews:
     """Test API views with method-specific validation."""
 
-    def test_get_method_validation(self, client: APIClient) -> None:
+    def test_get_method_validation(self) -> None:
         """Test GET request with method-specific validation."""
+        client = APIClient()
         response = client.get("/api/method-specific/?filter=active&sort_by=name")
         assert response.status_code == 200
         data = response.json()
@@ -326,9 +343,10 @@ class TestApiMethodSpecificViews:
         assert data["sort_by"] == "name"
         assert data["method"] == "GET"
 
-    def test_post_method_validation(self, client: APIClient) -> None:
+    def test_post_method_validation(self) -> None:
         """Test POST request with method-specific validation."""
         # Ensure proper content type is set for DRF to parse the data correctly
+        client = APIClient()
         response = client.post(
             "/api/method-specific/?data=test_data&priority=3",
             format="json",  # This ensures DRF properly parses the request body
@@ -339,35 +357,40 @@ class TestApiMethodSpecificViews:
         assert data["priority"] == 3
         assert data["method"] == "POST"
 
-    def test_get_method_validation_error(self, client: APIClient) -> None:
+    def test_get_method_validation_error(self) -> None:
         """Test GET request with invalid parameters."""
+        client = APIClient()
         response = client.get("/api/method-specific/?sort_by=name")  # Missing required 'filter'
         assert response.status_code == 422
         error_data = response.json()
         assert "filter" in error_data["errors"]
 
 
+@drf_required
 class TestDynamicModelResolver:
     """Test views with dynamically resolved models."""
 
-    def test_default_model_resolution(self, client: APIClient) -> None:
+    def test_default_model_resolution(self) -> None:
         """Test default model resolution."""
+        client = APIClient()
         response = client.get("/api/dynamic-model/?filter=active&sort_by=name")
         assert response.status_code == 200
         data = response.json()
         assert data["model"] == "GetQueryParams"
         assert data["filter"] == "active"
 
-    def test_dynamic_model_resolution(self, client: APIClient) -> None:
+    def test_dynamic_model_resolution(self) -> None:
         """Test dynamic model resolution based on request parameters."""
+        client = APIClient()
         response = client.get("/api/dynamic-model/?use_post_model=true&data=test_data&priority=3")
         assert response.status_code == 200
         data = response.json()
         assert data["model"] == "PostQueryParams"
         assert data["data"] == "test_data"
 
-    def test_dynamic_model_validation_error(self, client: APIClient) -> None:
+    def test_dynamic_model_validation_error(self) -> None:
         """Test validation error with dynamically resolved model."""
+        client = APIClient()
         response = client.get("/api/dynamic-model/?use_post_model=true&data=test_data&priority=10")
         assert response.status_code == 422
         error_data = response.json()

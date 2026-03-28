@@ -1,4 +1,6 @@
 # Minimal settings required for Django and pytest-django
+from django_qp._compat import HAS_DRF
+
 SECRET_KEY = "django-insecure-key-for-testing"
 INSTALLED_APPS = [
     "django.contrib.auth",
@@ -6,7 +8,9 @@ INSTALLED_APPS = [
     "django_qp",
 ]
 
-# Required database configuration
+if HAS_DRF:
+    INSTALLED_APPS.append("rest_framework")
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
@@ -14,5 +18,4 @@ DATABASES = {
     },
 }
 
-# URL configuration
 ROOT_URLCONF = "tests.test_urls"

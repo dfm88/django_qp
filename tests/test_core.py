@@ -4,8 +4,8 @@ import pytest
 from django.http import JsonResponse
 from django.test import RequestFactory
 from pydantic import BaseModel, Field
-from rest_framework.response import Response
 
+from django_qp._compat import HAS_DRF
 from django_qp.core import (
     create_error_response,
     format_pydantic_errors,
@@ -14,6 +14,9 @@ from django_qp.core import (
     process_query_params,
 )
 from django_qp.exceptions import QueryParamsError
+
+if HAS_DRF:
+    from rest_framework.response import Response
 
 
 def test_list_conversion(rf: RequestFactory) -> None:
@@ -117,6 +120,7 @@ def test_create_error_response_django() -> None:
     assert "name" in data["errors"]
 
 
+@pytest.mark.skipif(not HAS_DRF, reason="DRF not installed")
 def test_create_error_response_drf() -> None:
     """Test create_error_response function for DRF responses."""
     errors = [
@@ -142,18 +146,20 @@ def test_create_error_response_drf() -> None:
     assert response.data["errors"]["name"] == ["Please provide a name"]
 
 
+@pytest.mark.skipif(not HAS_DRF, reason="DRF not installed")
 def test_is_drf_request(rf: RequestFactory) -> None:
-    """Test is_drf_request function."""
+    """Test is_drf_request function uses isinstance check against DRF Request."""
+    from rest_framework.request import Request as DRFRequest
+
     # Create a standard Django request
     django_request = rf.get("/test/")
     assert is_drf_request(django_request) is False
 
-    # Create a mock DRF request by adding DRF-specific attributes
-    drf_request = rf.get("/test/")
-    drf_request.parser_context = {}
+    # Create an actual DRF Request wrapping a Django request
+    drf_request = DRFRequest(rf.get("/test/"))
     assert is_drf_request(drf_request) is True
 
-    # Try with accepted_renderer attribute
-    drf_request2 = rf.get("/test/")
-    drf_request2.accepted_renderer = object()
-    assert is_drf_request(drf_request2) is True
+    # A plain Django request with DRF-like attributes is NOT a DRF request
+    fake_drf_request = rf.get("/test/")
+    fake_drf_request.parser_context = {}
+    assert is_drf_request(fake_drf_request) is False

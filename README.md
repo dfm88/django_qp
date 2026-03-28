@@ -30,9 +30,16 @@ class MyView(QueryParamsMixinView[UserParams], View):
 
 ---
 
-# Django Pydantic Query Params
+# Django QP
 
 A lightweight library for Django and Django Rest Framework that enables validation of query parameters using Pydantic models, inspired by FastAPI's approach.
+
+## Requirements
+
+- Python >= 3.10, < 3.15
+- Django >= 3.2, < 7.0
+- Pydantic >= 2.0
+- Django REST Framework >= 3.15.2 (**optional**)
 
 ## Why use this library?
 
@@ -64,10 +71,17 @@ A lightweight library for Django and Django Rest Framework that enables validati
 pip install django-qp
 ```
 
+With DRF support:
+
+```bash
+pip install django-qp[drf]
+```
+
 Or with uv:
 
 ```bash
-uv pip install django-qp
+uv pip install django-qp        # Django only
+uv pip install django-qp[drf]   # with DRF support
 ```
 
 ## Usage
@@ -91,7 +105,6 @@ class ProductFilterParams(BaseModel):
 from django.views import View
 from django.http import JsonResponse
 from django_qp import QueryParamsMixinView
-from typing import cast
 
 # Specify the model as a generic parameter for IDE autocompletion
 class ProductListView(QueryParamsMixinView[ProductFilterParams], View):
@@ -99,7 +112,6 @@ class ProductListView(QueryParamsMixinView[ProductFilterParams], View):
 
     def get(self, request):
         params = self.validated_params  # IDE will now recognize type as ProductFilterParams
-        # Use validated and type-converted parameters with autocompletion support
         return JsonResponse({
             "category": params.category,
             "min_price": params.min_price
@@ -108,17 +120,17 @@ class ProductListView(QueryParamsMixinView[ProductFilterParams], View):
 
 ### 3. Use with Django Rest Framework views
 
+Requires `pip install django-qp[drf]`.
+
 ```python
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django_qp import QueryParamsMixinView
 
-# Use generic type parameter for IDE autocompletion
 class ProductAPIView(QueryParamsMixinView[ProductFilterParams], APIView):
     validated_params_model = ProductFilterParams
 
     def get(self, request):
-        # With the generic type parameter, your IDE will provide autocompletion
         params = self.validated_params
         return Response({
             "result": "success",
@@ -128,72 +140,41 @@ class ProductAPIView(QueryParamsMixinView[ProductFilterParams], APIView):
 
 ### 4. Use with ViewSets for action-specific validation
 
-You can implement different validation models for different actions by overriding the `get_query_params_class` method.
-When working with ViewSets that use different Pydantic models for different actions, you have a few options for proper typing.
+Override `get_query_params_class` to return different models per action (similar to DRF's `get_serializer_class`):
 
 ```python
 from rest_framework.viewsets import ModelViewSet
-from django_qp import QueryParamsMixinViewSet
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django_qp import QueryParamsMixinView
 from typing import cast
 
-# For ViewSets with multiple parameter models:
-# 1. Use the most common model or base model as the generic parameter
-# 2. Use explicit type casting in each action method
-
-class ProductViewSet(QueryParamsMixinViewSet[BaseParamsModel], ModelViewSet):
+class ProductViewSet(QueryParamsMixinView[ProductFilterParams], ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
-    default_validated_params_model = DefaultParams
 
-    def get_query_params_class(self):
-        """
-        Override to provide different parameter models per action
-        """
-        if self.action == 'list':
+    def get_query_params_class(self, action):
+        if action == "list":
             return ProductFilterParams
-        elif self.action == 'export':
+        elif action == "export":
             return ExportParams
-        return self.default_validated_params_model
+        return None  # No validation for other actions
 
     def list(self, request):
-        # Option 1: Use explicit type casting for IDE autocompletion
         params = cast(ProductFilterParams, self.validated_params)
-
-        # Option 2: Use type annotation (works in many IDEs)
-        params: ProductFilterParams = self.validated_params
-
-        # Now you get proper IDE autocompletion for ProductFilterParams specific fields
         filtered_products = self.queryset.filter(
             category=params.category,
             price__gte=params.min_price
         )
         # ...
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=["get"])
     def export(self, request):
-        # Use appropriate type casting for this action
         params = cast(ExportParams, self.validated_params)
-
-        # Now you have access to ExportParams-specific fields with autocompletion
         return Response({
             "export_format": params.format,
             "with_details": params.include_details
         })
-```
-
-The alternative for ViewSets is using the dictionary-based configuration:
-
-```python
-class ProductViewSet(QueryParamsMixinViewSet[BaseParamsModel], ModelViewSet):
-    # Configure models for different actions
-    validated_params_models = {
-        "list": ProductFilterParams,
-        "export": ExportParams,
-    }
-    default_validated_params_model = DefaultParams
-
-    # In your action methods, use the type casting techniques above
-    # for proper IDE autocompletion
 ```
 
 ### 5. Use with function-based views
@@ -206,14 +187,13 @@ from django_qp import validate_query_params, EnhancedHttpRequest
 
 @validate_query_params(ProductFilterParams)
 def product_list(request: EnhancedHttpRequest[ProductFilterParams]):
-    # For function-based views, use EnhancedHttpRequest for proper type hints
     params = request.validated_params  # IDE autocomplete works here!
     return JsonResponse({"category": params.category})
 ```
 
 #### Method-specific validation
 
-You can provide different validation models for different HTTP methods:
+Provide different validation models for different HTTP methods using a dict with **lowercase** method names:
 
 ```python
 from django.http import JsonResponse, HttpRequest
@@ -229,23 +209,20 @@ class PostParams(BaseModel):
 
 # Dictionary mapping HTTP methods to models
 @validate_query_params({
-    "GET": GetParams,
-    "POST": PostParams,
-    "": DefaultParams  # Optional fallback for unmapped methods
+    "get": GetParams,
+    "post": PostParams,
+    "": DefaultParams,  # Optional fallback for unmapped methods
 })
 def products_api(request: HttpRequest):
-    # The appropriate model will be used based on the request method
     params = request.validated_params
 
     if request.method == "GET":
-        # Type hint for IDE autocompletion
         params: GetParams
         return JsonResponse({
             "filter": params.filter,
             "sort_by": params.sort_by
         })
     elif request.method == "POST":
-        # Type hint for IDE autocompletion
         params: PostParams
         return JsonResponse({
             "data": params.data,
@@ -255,15 +232,13 @@ def products_api(request: HttpRequest):
 
 #### Dynamic model selection
 
-For more complex scenarios, you can use a resolver function:
+For more complex scenarios, use a resolver function:
 
 ```python
 from django.http import JsonResponse
 from django_qp import validate_query_params, EnhancedHttpRequest
 
-# Dynamic model resolver based on request properties
 def get_model_for_request(request):
-    # Logic to determine which model to use
     if request.GET.get("export") == "true":
         return ExportParams
     return StandardParams
@@ -272,12 +247,9 @@ def get_model_for_request(request):
 def dynamic_api(request: EnhancedHttpRequest[ExportParams | StandardParams]):
     params = request.validated_params
 
-    # Type check to determine which model was used
-    if hasattr(params, 'format'):  # ExportParams specific field
-        # Handle export parameters
+    if hasattr(params, "format"):
         return JsonResponse({"format": params.format})
     else:
-        # Handle standard parameters
         return JsonResponse({"query": params.query})
 ```
 
@@ -301,21 +273,19 @@ class CustomView(QueryParamsMixinView[ProductFilterParams], APIView):
         "min_price": 400,
         "category": 404,
     }
-}
 ```
 
 ## Advanced: Direct parameter validation
 
 ```python
 from django_qp import process_query_params, QueryParamsError
-from typing import cast
 
 def custom_view(request):
     try:
-        # Explicit typing for IDE autocompletion
-        params: ProductFilterParams = process_query_params(request, ProductFilterParams)
-        # Or use cast() if you prefer
-        params = cast(ProductFilterParams, process_query_params(request, ProductFilterParams))
+        params = cast(
+            ProductFilterParams,
+            process_query_params(request, ProductFilterParams)
+        )
     except QueryParamsError as e:
         return JsonResponse({"error": e.detail}, status=400)
     # ...
