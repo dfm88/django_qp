@@ -13,6 +13,8 @@ from ._compat import HAS_DRF
 from .exceptions import QueryParamsError
 
 if TYPE_CHECKING:
+    from django.http import QueryDict
+
     from .internal_typing import ErrorDict, ErrorList, QParamsTypeCl
 
 
@@ -47,16 +49,19 @@ def contains_list_type(annotation: type | None) -> bool:
     return False
 
 
-def _extract_request_data(request: HttpRequest) -> dict[str, Any]:
+def _extract_request_data(request: HttpRequest) -> QueryDict | dict[str, Any]:
     """Extract query parameters from a request.
+
+    Returns the raw QueryDict to preserve multi-value keys.
+    Replace this function to customize parameter extraction.
 
     Args:
         request: The HTTP request object
 
     Returns:
-        A dictionary of query parameters
+        A QueryDict or dict of query parameters
     """
-    return request.GET.dict()
+    return request.GET
 
 
 def process_query_params(
@@ -83,16 +88,24 @@ def process_query_params(
     query_dict = _extract_request_data(request)
 
     try:
-        # Convert comma-separated strings to lists for list fields
-        processed_dict = {}
+        # Convert list-typed fields using getlist() for multi-value support
+        processed_dict: dict[str, Any] = {}
         for field_name, value in query_dict.items():
             field = model.model_fields.get(field_name)
             if field and contains_list_type(annotation=field.annotation):
-                # Only split string values, not actual lists
-                if isinstance(value, str):
-                    processed_dict[field_name] = value.split(",")
+                # Use getlist() if available (QueryDict), otherwise wrap scalar
+                if hasattr(query_dict, "getlist"):
+                    values = query_dict.getlist(field_name)
                 else:
-                    processed_dict[field_name] = value
+                    values = value if isinstance(value, list) else [value]
+                # Comma-split each element, then flatten
+                expanded: list[Any] = []
+                for v in values:
+                    if isinstance(v, str):
+                        expanded.extend(v.split(","))
+                    else:
+                        expanded.append(v)
+                processed_dict[field_name] = expanded
             else:
                 processed_dict[field_name] = value
 

@@ -171,3 +171,73 @@ def test_is_drf_request(rf: RequestFactory) -> None:
     fake_drf_request = rf.get("/test/")
     fake_drf_request.parser_context = {}
     assert is_drf_request(fake_drf_request) is False
+
+
+def test_multi_value_query_params(rf: RequestFactory) -> None:
+    """Test repeated query keys are collected into a list."""
+
+    class ListParams(BaseModel):
+        tags: list[str]
+
+    request = rf.get("/test/", {"tags": ["a", "b"]})
+    params = process_query_params(request, ListParams)
+    assert params.tags == ["a", "b"]
+
+
+def test_multi_value_with_comma_split(rf: RequestFactory) -> None:
+    """Test repeated keys with commas are split and flattened."""
+
+    class ListParams(BaseModel):
+        tags: list[str]
+
+    request = rf.get("/test/?tags=a,b&tags=c,d")
+    params = process_query_params(request, ListParams)
+    assert params.tags == ["a", "b", "c", "d"]
+
+
+def test_single_value_list_field_unchanged(rf: RequestFactory) -> None:
+    """Test comma-separated single value still works (regression guard)."""
+
+    class ListParams(BaseModel):
+        tags: list[str]
+
+    request = rf.get("/test/", {"tags": "a,b,c"})
+    params = process_query_params(request, ListParams)
+    assert params.tags == ["a", "b", "c"]
+
+
+def test_scalar_field_multi_value_takes_last(rf: RequestFactory) -> None:
+    """Test scalar fields with repeated keys take the last value (QueryDict default)."""
+
+    class ScalarParams(BaseModel):
+        name: str
+
+    request = rf.get("/test/?name=a&name=b")
+    params = process_query_params(request, ScalarParams)
+    assert params.name == "b"
+
+
+def test_extract_request_data_returns_querydict(rf: RequestFactory) -> None:
+    """Test _extract_request_data returns a QueryDict, not a plain dict."""
+    from django.http import QueryDict
+
+    from django_qp.core import _extract_request_data
+
+    request = rf.get("/test/", {"key": "value"})
+    data = _extract_request_data(request)
+    assert isinstance(data, QueryDict)
+
+
+def test_plain_dict_fallback(rf: RequestFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test list processing works when _extract_request_data returns a plain dict."""
+    import django_qp.core
+
+    class ListParams(BaseModel):
+        tags: list[str]
+
+    # Monkeypatch to return a plain dict (simulates a custom override)
+    monkeypatch.setattr(django_qp.core, "_extract_request_data", lambda r: {"tags": "x,y,z"})
+
+    request = rf.get("/test/")
+    params = process_query_params(request, ListParams)
+    assert params.tags == ["x", "y", "z"]

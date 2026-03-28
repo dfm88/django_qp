@@ -397,3 +397,36 @@ class TestDynamicModelResolver:
         assert response.status_code == 422
         error_data = response.json()
         assert "priority" in error_data["errors"]
+
+
+class TestMROEnforcement:
+    """Test that QueryParamsMixinView enforces correct MRO order."""
+
+    def test_mro_correct_order_no_error(self) -> None:
+        """Mixin before View in bases should not raise."""
+
+        class GoodView(QueryParamsMixinView, View):
+            pass
+
+    def test_mro_wrong_order_raises_typeerror(self) -> None:
+        """View before mixin in bases should raise TypeError at class definition."""
+        with pytest.raises(TypeError, match="incorrect inheritance order"):
+
+            class BadView(View, QueryParamsMixinView):
+                pass
+
+    @drf_required
+    def test_mro_wrong_order_drf_apiview(self) -> None:
+        """APIView before mixin should raise TypeError."""
+        from rest_framework.views import APIView
+
+        with pytest.raises(TypeError, match="incorrect inheritance order"):
+
+            class BadDRFView(APIView, QueryParamsMixinView):
+                pass
+
+    def test_mro_intermediate_mixin_no_error(self) -> None:
+        """Mixin without any View in bases should not raise."""
+
+        class IntermediateMixin(QueryParamsMixinView):
+            pass

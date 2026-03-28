@@ -38,6 +38,35 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
     field_error_messages: ClassVar[dict[str, dict[str, str]] | None] = None
     field_error_status_codes: ClassVar[dict[str, int] | None] = None
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:  # noqa: ANN401
+        """Validate that the mixin appears before View in the MRO.
+
+        Raises:
+            TypeError: If the mixin comes after django.views.View in the MRO,
+                which would cause dispatch() to skip validation.
+        """
+        super().__init_subclass__(**kwargs)
+
+        from django.views import View
+
+        mro = cls.__mro__
+        mixin_pos = None
+        view_pos = None
+
+        for i, klass in enumerate(mro):
+            if klass is QueryParamsMixinView:
+                mixin_pos = i
+            if klass is View:
+                view_pos = i
+
+        if mixin_pos is not None and view_pos is not None and mixin_pos > view_pos:
+            raise TypeError(
+                f"{cls.__name__} has incorrect inheritance order. "
+                f"QueryParamsMixinView must come before {View.__name__} in base classes.\n"
+                f"  Correct:   class {cls.__name__}(QueryParamsMixinView, ...View)\n"
+                f"  Incorrect: class {cls.__name__}(...View, QueryParamsMixinView)",
+            )
+
     def get_query_params_class(self, action: str | None) -> type[QParamsTypeCl] | None:
         """Get the query parameters model class.
 
