@@ -1,3 +1,5 @@
+"""Tests for core validation functions."""
+
 import json
 
 import pytest
@@ -20,6 +22,8 @@ if HAS_DRF:
 
 
 def test_list_conversion(rf: RequestFactory) -> None:
+    """Test comma-separated values are split into lists."""
+
     class ListParams(BaseModel):
         tags: list[str]
 
@@ -29,6 +33,8 @@ def test_list_conversion(rf: RequestFactory) -> None:
 
 
 def test_type_conversion(rf: RequestFactory) -> None:
+    """Test query string values are coerced to the declared field types."""
+
     class TypeParams(BaseModel):
         num: int
         flag: bool
@@ -40,6 +46,8 @@ def test_type_conversion(rf: RequestFactory) -> None:
 
 
 def test_validation_error(rf: RequestFactory) -> None:
+    """Test that constraint violations raise QueryParamsError."""
+
     class ValidParams(BaseModel):
         age: int = Field(ge=0)
 

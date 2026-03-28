@@ -1,6 +1,8 @@
+"""Test fixtures, mock views, and Pydantic models for django-qp tests."""
+
 import sys
 from pathlib import Path
-from typing import ClassVar, cast
+from typing import Any, ClassVar, cast
 
 from django.http import HttpRequest, HttpResponse
 from django.views import View
@@ -18,49 +20,40 @@ sys.path.insert(0, str(ROOT_DIR))
 
 # Test Pydantic models
 class MockParams(BaseModel):
-    """
-    Mock Pydantic model for testing.
-    """
+    """Mock Pydantic model for testing."""
 
     name: str
     age: int = Field(ge=0)
     tags: list[str] | None = None
 
 
-class MockParams2(MockParams): ...
+class MockParams2(MockParams):
+    """Extended mock params for testing method-specific validation."""
 
 
 class GetQueryParams(BaseModel):
-    """
-    Mock Pydantic model for GET requests.
-    """
+    """Mock Pydantic model for GET requests."""
 
     filter: str
     sort_by: str | None = None
 
 
 class PostQueryParams(BaseModel):
-    """
-    Mock Pydantic model for POST requests.
-    """
+    """Mock Pydantic model for POST requests."""
 
     data: str
     priority: int = Field(ge=1, le=5)
 
 
 class MockViewSetParams(BaseModel):
-    """
-    Mock Pydantic model for testing.
-    """
+    """Mock Pydantic model for testing."""
 
     sort: str
     page: int = Field(ge=1)
 
 
 class NotPydanticModel:
-    """
-    Mock class that is not a Pydantic model.
-    """
+    """Mock class that is not a Pydantic model."""
 
     name: str
     age: int
@@ -68,25 +61,24 @@ class NotPydanticModel:
 
 # Test Views
 class MockBasicDjangoView(QueryParamsMixinView[MockParams], View):
+    """Mock implementation of a basic Django view with query parameter validation."""
+
     def get_query_params_class(self, action: str | None) -> type[MockParams] | None:
+        """Return MockParams for GET, MockParams2 for POST."""
         if action == "get":
             return MockParams
         elif action == "post":
             return MockParams2
         return None
 
-    def get(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
-        """
-        Mock implementation of a Django view get method.
-        """
+    def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        """Mock implementation of a Django view get method."""
         params: MockParams | None = self.validated_params
         assert isinstance(params, MockParams)
         return HttpResponse(f"name={params.name}, age={params.age}")
 
-    def post(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
-        """
-        Mock implementation of a Django view post method.
-        """
+    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        """Mock implementation of a Django view post method."""
         params: MockParams | None = self.validated_params
         assert isinstance(params, MockParams2)
         return HttpResponse(f"name={params.name}, age={params.age}, tags={params.tags}")
@@ -127,12 +119,12 @@ if HAS_DRF:
     from rest_framework.viewsets import ViewSet
 
     class MockBasicDRFView(QueryParamsMixinView, APIView):
+        """Mock implementation of a DRF APIView with query parameter validation."""
+
         validated_params_model = MockParams
 
-        def get(self, request: HttpRequest, *args, **kwargs) -> Response:
-            """
-            Mock implementation of a DRF view get method.
-            """
+        def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:
+            """Mock implementation of a DRF view get method."""
             params = self.validated_params
             return Response(
                 {
@@ -143,24 +135,22 @@ if HAS_DRF:
             )
 
     class MockViewSet(QueryParamsMixinView[MockParams | MockViewSetParams], ViewSet):
-        def get_query_params_class(
+        """Mock implementation of a DRF ViewSet with method-specific validation."""
+
+        def get_query_params_class(  # noqa: D102
             self,
             action: str | None,
         ) -> type[MockParams] | type[MockViewSetParams] | None:
             if action == "list":
                 return MockViewSetParams
-            elif action == "retrieve":
-                return MockParams
-            elif action == "custom_action":
+            elif action == "retrieve" or action == "custom_action":
                 return MockParams
             elif action == "not_a_pydantic_model":
                 return NotPydanticModel
             return None
 
         def list(self, request: HttpRequest) -> Response:
-            """
-            Mock implementation of a DRF view list method.
-            """
+            """Mock implementation of a DRF view list method."""
             params: MockViewSetParams | None = self.validated_params
             assert isinstance(params, MockViewSetParams)
             return Response(
@@ -171,9 +161,7 @@ if HAS_DRF:
             )
 
         def retrieve(self, request: HttpRequest, pk: int | str | None = None) -> Response:
-            """
-            Mock implementation of a DRF view retrieve method.
-            """
+            """Mock implementation of a DRF view retrieve method."""
             params: MockParams | None = self.validated_params
             assert isinstance(params, MockParams)
             return Response(
@@ -185,9 +173,7 @@ if HAS_DRF:
 
         @action(detail=False, methods=["get"])
         def custom_action(self, request: HttpRequest) -> Response:
-            """
-            Mock implementation of a DRF view custom action method.
-            """
+            """Mock implementation of a DRF view custom action method."""
             params = self.validated_params
             return Response(
                 {
@@ -198,9 +184,7 @@ if HAS_DRF:
 
         @action(detail=False, methods=["get"])
         def not_a_pydantic_model(self, request: HttpRequest) -> Response:
-            """
-            Mock implementation of a DRF view custom action method.
-            """
+            """Mock implementation of a DRF view custom action method."""
             params = self.validated_params
             return Response(
                 {
@@ -210,6 +194,8 @@ if HAS_DRF:
             )
 
     class CustomErrorView(QueryParamsMixinView, APIView):
+        """View to test custom error messages for validation errors."""
+
         validated_params_model = MockParams
         # Define custom error messages
         field_error_messages: ClassVar[dict[str, dict[str, str]]] = {
@@ -223,10 +209,13 @@ if HAS_DRF:
             },
         }
 
-        def get(self, request: HttpRequest, *args, **kwargs) -> Response:
+        def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:
+            """Handle GET request."""
             return Response({"success": True})
 
     class CustomStatusView(QueryParamsMixinView, APIView):
+        """View to test custom status codes for validation errors."""
+
         validated_params_model = MockParams
         # Define field-specific status codes
         field_error_status_codes: ClassVar[dict[str, int]] = {
@@ -234,15 +223,14 @@ if HAS_DRF:
             "name": 404,  # Not found for name errors
         }
 
-        def get(self, request: HttpRequest, *args, **kwargs) -> Response:
+        def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:
+            """Handle GET request."""
             return Response({"success": True})
 
     @api_view(["GET", "POST"])
     @validate_query_params(MockParams)
     def api_function_view(request: EnhancedHttpRequest[MockParams]) -> Response:
-        """
-        Mock implementation of a function-based view with DRF.
-        """
+        """Mock implementation of a function-based view with DRF."""
         params = request.validated_params
 
         response = {
@@ -276,7 +264,6 @@ if HAS_DRF:
     )
     def api_method_specific_view(request: HttpRequest) -> Response:
         """API view with method-specific validation."""
-
         if request.method == "GET":
             params = request.validated_params
             return Response(

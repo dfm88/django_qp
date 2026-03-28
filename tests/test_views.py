@@ -1,4 +1,6 @@
-# tests/test_views.py
+"""Tests for Django and DRF view integration with query parameter validation."""
+
+from typing import Any
 
 import pytest
 from conftest import (
@@ -24,7 +26,7 @@ class BasicDjangoView(QueryParamsMixinView[MockParams], View):
 
     validated_params_model = MockParams
 
-    def get(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
+    def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         """Handle GET request and return user details."""
         params = self.validated_params
         return HttpResponse(f"name={params.name}, age={params.age}")
@@ -37,7 +39,7 @@ if HAS_DRF:
 
         validated_params_model = MockParams
 
-        def get(self, request: HttpRequest, *args, **kwargs) -> Response:
+        def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:
             """Handle GET request and return user details in JSON format."""
             params = self.validated_params
             return Response(
@@ -51,6 +53,8 @@ if HAS_DRF:
 
 @pytest.mark.django_db
 class TestDjangoViews:
+    """Test Django views with query parameter validation."""
+
     @pytest.mark.parametrize(
         "http_method",
         [
@@ -149,7 +153,7 @@ class TestViewSets:
         }
 
     def test_retrieve_valid_params(self) -> None:
-        """Test ViewSet retrieve method with valid query parameters"""
+        """Test ViewSet retrieve method with valid query parameters."""
         client = APIClient()
         response = client.get(
             "/api/items/1/",
@@ -258,7 +262,6 @@ class TestCustomErrorHandling:
 
     def test_custom_error_messages(self) -> None:
         """Test view with custom error messages."""
-
         # Register the view
 
         # Test with invalid age
@@ -279,7 +282,6 @@ class TestCustomErrorHandling:
 
     def test_custom_status_codes(self) -> None:
         """Test view with custom status codes."""
-
         # Register the view
 
         # Test with age error - should return 400

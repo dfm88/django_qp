@@ -34,12 +34,28 @@ dependencies = [
 [project.optional-dependencies]
 drf = ["djangorestframework>=3.15.2"]
 
+[dependency-groups]
+dev = [
+    "djangorestframework>=3.15.2",
+    "pytest>=8.3.5",
+    "pytest-cov>=6.0.0",
+    "pytest-django>=4.10.0",
+    "ruff>=0.9.10",
+    "ipdb>=0.13.13",
+    "mypy>=1.15.0",
+    "pre-commit>=4.2.0",
+    "tox>=4.0",
+    "tox-uv>=1.0",
+]
+
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/django_qp"]
+
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
@@ -55,8 +71,27 @@ filterwarnings = [
 [tool.ruff]
 line-length = 110
 target-version = "py310"
-lint.select = ["E", "F", "B", "I", "N", "UP", "ANN", "COM", "RUF", "PT", "PTH", "PYI", "TCH"]
-lint.ignore = ["ANN002", "ANN003", "ANN401"]
+lint.select = [
+    "E",    # pycodestyle — style errors (indentation, spaces, etc.)
+    "W",    # pycodestyle — warnings (whitespace, blank lines)
+    "F",    # pyflakes — unused variables, unused imports, etc.
+    "I",    # isort — import ordering
+    "B",    # flake8-bugbear — common bugs and anti-patterns
+    "C4",   # flake8-comprehensions — prefer list/dict/set comprehensions
+    "UP",   # pyupgrade — modernise Python syntax (f-strings, union types, etc.)
+    "S",    # flake8-bandit — security anti-patterns
+    "T20",  # flake8-print — no print() in production code
+    "SIM",  # flake8-simplify — simplify if/else, context managers, booleans
+    "RUF",  # ruff-specific — extra ruff rules (redundant noqa, etc.)
+    "ANN",  # flake8-annotations — mandatory type annotations on all public functions
+    "D",    # pydocstyle — mandatory docstrings (Google convention, see below)
+    "FBT",  # flake8-boolean-trap — no positional booleans → keyword-only arguments
+]
+lint.ignore = [
+    "E501",  # line too long — delegated to ruff format
+    "S101",  # use of assert — allowed in tests
+    "UP047", # X | Y annotation syntax — not supported by the target Python version
+]
 lint.fixable = ["ALL"]
 lint.unfixable = []
 exclude = [
@@ -69,8 +104,15 @@ exclude = [
     "dist",
 ]
 
-[lint.isort]
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN401", "S105"]
+
+[tool.ruff.lint.isort]
 known-first-party = ["django_qp"]
+
+[tool.ruff.lint.pydocstyle]
+# Google docstring style: Args:, Returns:, Raises:, etc.
+convention = "google"
 
 [tool.mypy]
 python_version = "3.10"
@@ -80,20 +122,6 @@ module = "tests.*"
 disallow_untyped_defs = false
 check_untyped_defs = false
 
-
-[dependency-groups]
-dev = [
-    "djangorestframework>=3.15.2",
-    "pytest>=8.3.5",
-    "pytest-cov>=6.0.0",
-    "pytest-django>=4.10.0",
-    "ruff>=0.9.10",
-    "ipdb>=0.13.13",
-    "mypy>=1.15.0",
-    "pre-commit>=4.2.0",
-    "tox>=4.0",
-    "tox-uv>=1.0",
-]
 
 [project.urls]
 Homepage = ""

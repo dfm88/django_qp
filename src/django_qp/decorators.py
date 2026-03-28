@@ -1,3 +1,5 @@
+"""Decorator for validating query parameters on function-based views."""
+
 from __future__ import annotations
 
 import functools
@@ -27,8 +29,7 @@ def _get_model_for_request(
     model_arg: ModelArg,
     request: HttpRequest,
 ) -> type[BaseModel] | None:
-    """
-    Resolve the appropriate model for the current request.
+    """Resolve the appropriate model for the current request.
 
     Args:
         model_arg: Single model, method->model mapping, or model resolver callable
@@ -96,8 +97,7 @@ def validate_query_params(
     field_error_messages: dict[str, dict[str, str]] | None = None,
     field_error_status_codes: dict[str, int] | None = None,
 ) -> Callable[[ViewFunc], Callable[..., Any]]:
-    """
-    Decorator to validate query parameters using Pydantic models.
+    """Decorator to validate query parameters using Pydantic models.
 
     Args:
         model: Either:
@@ -130,7 +130,7 @@ def validate_query_params(
 
     def decorator(view_func: ViewFunc) -> Callable[..., Any]:
         @functools.wraps(view_func)
-        def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> Any:
+        def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
             is_drf = is_drf_request(request)
 
             # Get the appropriate model for this request

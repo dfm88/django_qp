@@ -1,4 +1,5 @@
-# Minimal settings required for Django and pytest-django
+"""Minimal Django settings for pytest-django test runner."""
+
 from django_qp._compat import HAS_DRF
 
 SECRET_KEY = "django-insecure-key-for-testing"

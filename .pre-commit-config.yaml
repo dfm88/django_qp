@@ -1,22 +1,33 @@
+default_language_version:
+  python: python3.10
+
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
-    -   id: trailing-whitespace
-    -   id: end-of-file-fixer
-    -   id: check-yaml
-    -   id: check-toml
-    -   id: check-added-large-files
-    -   id: debug-statements
-    -   id: check-ast
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: debug-statements       # catches leftover breakpoints/pdb calls
+      - id: check-ast              # validates Python syntax
         language_version: python3
 
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.10
+    rev: v0.15.7
     hooks:
     -   id: ruff
         args: [--fix]
     -   id: ruff-format
+
+-   repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.1.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert]
 
 -   repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.5.1

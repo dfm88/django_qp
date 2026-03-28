@@ -1,3 +1,5 @@
+"""Internal type definitions for django-qp."""
+
 from typing import Generic, TypeVar
 
 from django.http import HttpRequest

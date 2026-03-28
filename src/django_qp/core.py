@@ -1,9 +1,11 @@
+"""Core validation engine for django-qp query parameter processing."""
+
 from __future__ import annotations
 
 import types
 from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
 
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
@@ -15,8 +17,8 @@ if TYPE_CHECKING:
 
 
 def contains_list_type(annotation: type | None) -> bool:
-    """
-    Recursively check if a type annotation contains a list type at any level.
+    """Recursively check if a type annotation contains a list type at any level.
+
     Handles nested unions and complex type hierarchies.
 
     Args:
@@ -46,8 +48,7 @@ def contains_list_type(annotation: type | None) -> bool:
 
 
 def _extract_request_data(request: HttpRequest) -> dict[str, Any]:
-    """
-    Extract query parameters from a request.
+    """Extract query parameters from a request.
 
     Args:
         request: The HTTP request object
@@ -62,8 +63,7 @@ def process_query_params(
     request: HttpRequest,
     model: type[QParamsTypeCl],
 ) -> QParamsTypeCl:
-    """
-    Process and validate query parameters using a Pydantic model.
+    """Process and validate query parameters using a Pydantic model.
 
     Args:
         request: Django/DRF HTTP request
@@ -76,7 +76,6 @@ def process_query_params(
         QueryParamsError: When validation fails
         TypeError: When model is not a Pydantic BaseModel subclass
     """
-
     if not isinstance(model, type) or not issubclass(model, BaseModel):
         raise TypeError("model must be a Pydantic BaseModel subclass")
 
@@ -107,8 +106,7 @@ def format_pydantic_errors(
     errors: list[ErrorList],
     field_error_messages: dict[str, dict[str, str]] | None = None,
 ) -> ErrorDict:
-    """
-    Convert Pydantic validation errors to a standardized format with optional custom messages.
+    """Convert Pydantic validation errors to a standardized format with optional custom messages.
 
     Args:
         errors: List of Pydantic error dictionaries
@@ -144,8 +142,7 @@ def get_status_code_for_error(
     default_status_code: int,
     field_error_status_codes: dict[str, int] | None = None,
 ) -> int:
-    """
-    Determine the appropriate HTTP status code for validation errors.
+    """Determine the appropriate HTTP status code for validation errors.
 
     When multiple fields have errors, only the first error's field determines
     the status code.
@@ -169,12 +166,12 @@ def create_error_response(
     errors: list[ErrorList],
     error_title: str = "Validation Error",
     error_status_code: int = 422,
+    *,
     is_drf: bool = False,
     field_error_messages: dict[str, dict[str, str]] | None = None,
     field_error_status_codes: dict[str, int] | None = None,
-) -> JsonResponse | Any:
-    """
-    Create an appropriate error response for Django or DRF.
+) -> HttpResponse:
+    """Create an appropriate error response for Django or DRF.
 
     Args:
         errors: List of Pydantic error dictionaries
@@ -218,8 +215,7 @@ def create_error_response(
 
 
 def is_drf_request(request: HttpRequest) -> bool:
-    """
-    Determine if a request is a DRF request or a standard Django request.
+    """Determine if a request is a DRF request or a standard Django request.
 
     Uses isinstance check against DRF's Request class when DRF is available.
 

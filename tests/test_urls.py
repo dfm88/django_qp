@@ -1,3 +1,5 @@
+"""URL configuration for django-qp tests."""
+
 from conftest import (
     MockBasicDjangoView,
     function_view,

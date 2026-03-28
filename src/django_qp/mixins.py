@@ -1,3 +1,5 @@
+"""Mixin for adding query parameter validation to class-based views."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar, Generic
@@ -9,12 +11,11 @@ from .exceptions import QueryParamsError
 from .internal_typing import ErrorList, QParamsTypeCl
 
 if TYPE_CHECKING:
-    from django.http import HttpRequest, JsonResponse
+    from django.http import HttpRequest, HttpResponse
 
 
 class QueryParamsMixinView(Generic[QParamsTypeCl]):
-    """
-    Mixin to add query parameter validation to Django/DRF views.
+    """Mixin to add query parameter validation to Django/DRF views.
 
     Generic Parameters:
         QParamsTypeCl: A Pydantic BaseModel subclass that defines the query parameters structure.
@@ -38,8 +39,8 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
     field_error_status_codes: ClassVar[dict[str, int] | None] = None
 
     def get_query_params_class(self, action: str | None) -> type[QParamsTypeCl] | None:
-        """
-        Get the query parameters model class.
+        """Get the query parameters model class.
+
         Override this method to provide dynamic model selection based on request or other factors.
 
         Returns:
@@ -49,8 +50,7 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
 
     @staticmethod
     def _validate_model(model: BaseModel | object) -> bool:
-        """
-        Validate that the provided model is a Pydantic BaseModel subclass.
+        """Validate that the provided model is a Pydantic BaseModel subclass.
 
         Args:
             model: The model class to validate
@@ -60,9 +60,8 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
         """
         return model is not None and isinstance(model, type) and issubclass(model, BaseModel)
 
-    def create_error_response(self, errors: list[ErrorList]) -> JsonResponse:
-        """
-        Create an error response for validation failures.
+    def create_error_response(self, errors: list[ErrorList]) -> HttpResponse:
+        """Create an error response for validation failures.
 
         Always returns a JsonResponse because this runs inside dispatch(),
         before DRF's content negotiation pipeline sets up renderers.
@@ -72,7 +71,7 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
             errors: List of Pydantic error dictionaries
 
         Returns:
-            Django JsonResponse with error details
+            Django HttpResponse with error details
         """
         return create_error_response(
             errors=errors,
@@ -84,9 +83,7 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
         )
 
     def probe_action(self) -> str | None:
-        """
-        Determine the current action based on request method and action_map.
-        """
+        """Determine the current action based on request method and action_map."""
         # If action is already set, use it
         if hasattr(self, "action") and self.action:
             return self.action
@@ -102,9 +99,8 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
 
         return None
 
-    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Any:
-        """
-        Process query params before view method execution.
+    def dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+        """Process query params before view method execution.
 
         Args:
             request: The HTTP request
