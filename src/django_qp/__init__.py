@@ -3,12 +3,13 @@
 from .core import process_query_params
 from .decorators import validate_query_params
 from .exceptions import QueryParamsError
-from .mixins import QueryParamsMixin, ViewSetQueryParamsMixin
+from .internal_typing import EnhancedHttpRequest
+from .mixins import QueryParamsMixinView
 
 __all__ = [
+    "EnhancedHttpRequest",
     "QueryParamsError",
-    "QueryParamsMixin",
-    "ViewSetQueryParamsMixin",
+    "QueryParamsMixinView",
     "process_query_params",
     "validate_query_params",
 ]

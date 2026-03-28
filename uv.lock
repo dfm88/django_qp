@@ -148,7 +148,7 @@ wheels = [
 ]
 
 [[package]]
-name = "dj-pydantic-qparams"
+name = "django-qp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

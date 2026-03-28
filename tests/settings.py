@@ -3,8 +3,7 @@ SECRET_KEY = "django-insecure-key-for-testing"
 INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
-    # Your app
-    "dj_pydantic_qparams",
+    "django_qp",
 ]
 
 # Required database configuration

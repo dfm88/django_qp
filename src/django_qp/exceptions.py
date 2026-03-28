@@ -1,4 +1,4 @@
-from .typing import ErrorList
+from .internal_typing import ErrorList
 
 
 class QueryParamsError(Exception):

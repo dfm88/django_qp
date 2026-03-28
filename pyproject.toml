@@ -1,5 +1,5 @@
 [project]
-name = "dj-pydantic-qparams"
+name = "django-qp"
 version = "0.1.0"
 description = "Django query parameter validation using Pydantic, inspired by FastAPI"
 readme = "README.md"
@@ -37,7 +37,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/dj_pydantic_qparams"]
+packages = ["src/django_qp"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
@@ -51,7 +51,7 @@ django_find_project = false
 line-length = 110
 target-version = "py39"
 lint.select = ["E", "F", "B", "I", "N", "UP", "ANN", "COM", "RUF", "PT", "PTH", "PYI", "TCH"]
-lint.ignore = ["ANN002", "ANN003"]
+lint.ignore = ["ANN002", "ANN003", "UP006", "UP035", "ANN401"]
 lint.fixable = ["ALL"]
 lint.unfixable = []
 exclude = [
@@ -65,7 +65,7 @@ exclude = [
 ]
 
 [lint.isort]
-known-first-party = ["dj_pydantic_qparams"]
+known-first-party = ["django_qp"]
 
 [tool.mypy]
 python_version = "3.9"
