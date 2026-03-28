@@ -99,6 +99,11 @@ class ProductFilterParams(BaseModel):
     tags: list[str] | None = None  # Will parse comma-separated values
 ```
 
+> **List parameters:** Fields typed as `list[...]` support two patterns that can be combined:
+> - Comma-separated: `?tags=python,django` → `["python", "django"]`
+> - Repeated keys: `?tags=python&tags=django` → `["python", "django"]`
+> - Combined: `?tags=python,django&tags=fastapi` → `["python", "django", "fastapi"]`
+
 ### 2. Use with Django class-based views
 
 ```python
@@ -117,6 +122,16 @@ class ProductListView(QueryParamsMixinView[ProductFilterParams], View):
             "min_price": params.min_price
         })
 ```
+
+> **Important:** `QueryParamsMixinView` must appear **before** the view class in the inheritance list.
+> A `TypeError` is raised at class definition time if the order is wrong.
+> ```python
+> # Correct
+> class MyView(QueryParamsMixinView[MyParams], View): ...
+>
+> # Wrong — raises TypeError
+> class MyView(View, QueryParamsMixinView[MyParams]): ...
+> ```
 
 ### 3. Use with Django Rest Framework views
 
