@@ -71,11 +71,13 @@ jobs:
             django: ">=5.2,<5.3"
             django-label: "5.2"
             drf: false
+            pydantic: ">=2.11"
 
           - python: "3.14"
             django: ">=5.2,<5.3"
             django-label: "5.2"
             drf: true
+            pydantic: ">=2.11"
 
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +90,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv venv
-          uv pip install "django${{ matrix.django }}" "pydantic>=2.0" \
+          uv pip install "django${{ matrix.django }}" "pydantic${{ matrix.pydantic || '>=2.0' }}" \
             "pytest>=8.3.5" "pytest-asyncio>=0.23" "pytest-django>=4.10.0" \
             -e "."
 
