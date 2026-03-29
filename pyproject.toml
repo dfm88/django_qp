@@ -124,6 +124,6 @@ check_untyped_defs = false
 
 
 [project.urls]
-Homepage = ""
-Documentation = ""
-Issues = ""
+Homepage = "https://github.com/dfm88/django_qp"
+Repository = "https://github.com/dfm88/django_qp"
+Issues = "https://github.com/dfm88/django_qp/issues"

@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.13"
+
+      - run: uv sync --dev
+
+      - name: Ruff check
+        run: uv run ruff check src/ tests/
+
+      - name: Ruff format check
+        run: uv run ruff format --check src/ tests/
+
+  test:
+    name: >-
+      py${{ matrix.python }}-django${{ matrix.django-label }}${{ matrix.drf && '-drf' || '-nodrf' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.10"
+            django: ">=4.2,<4.3"
+            django-label: "4.2"
+            drf: false
+
+          - python: "3.12"
+            django: ">=4.2,<4.3"
+            django-label: "4.2"
+            drf: true
+
+          - python: "3.12"
+            django: ">=5.0,<5.1"
+            django-label: "5.0"
+            drf: true
+
+          - python: "3.12"
+            django: ">=5.1,<5.2"
+            django-label: "5.1"
+            drf: false
+
+          - python: "3.13"
+            django: ">=5.1,<5.2"
+            django-label: "5.1"
+            drf: true
+
+          - python: "3.13"
+            django: ">=5.2,<5.3"
+            django-label: "5.2"
+            drf: true
+
+          - python: "3.14"
+            django: ">=5.2,<5.3"
+            django-label: "5.2"
+            drf: false
+
+          - python: "3.14"
+            django: ">=5.2,<5.3"
+            django-label: "5.2"
+            drf: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv pip install "django${{ matrix.django }}" "pydantic>=2.0" \
+            "pytest>=8.3.5" "pytest-asyncio>=0.23" "pytest-django>=4.10.0" \
+            -e "."
+
+      - name: Install DRF
+        if: matrix.drf
+        run: uv pip install "djangorestframework>=3.15.2"
+
+      - name: Run tests
+        run: uv run pytest

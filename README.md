@@ -1,4 +1,12 @@
-# Are you tired of accessing Django query parameters like this?
+# Django QP
+
+[![CI](https://github.com/dfm88/django_qp/actions/workflows/ci.yml/badge.svg)](https://github.com/dfm88/django_qp/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/django-qp)](https://pypi.org/project/django-qp/)
+[![Python](https://img.shields.io/pypi/pyversions/django-qp)](https://pypi.org/project/django-qp/)
+[![Django](https://img.shields.io/badge/django-4.2%20%7C%205.0%20%7C%205.1%20%7C%205.2-blue)](https://pypi.org/project/django-qp/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/dfm88/django_qp/blob/main/LICENSE)
+
+## Are you tired of accessing Django query parameters like this?
 
 ```python
 # Traditional Django view
@@ -9,7 +17,23 @@ class MyView(View):
         # ...manual validation, type conversion, error handling...
 ```
 
-Now, with **django-qp**, you can harness the power of Pydantic validation:
+Or maybe you're using DRF and validating query parameters with a serializer defined as an inner class of your view, only to access the values through a dict with no IDE autocompletion?
+
+```python
+# DRF approach — no IDE autocompletion, dict-based access
+class MyView(APIView):
+    class QuerySerializer(serializers.Serializer):
+        name = serializers.CharField()
+        age = serializers.IntegerField(min_value=0)
+
+    def get(self, request):
+        serializer = self.QuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        name = serializer.validated_data["name"]  # No autocompletion, always a dict lookup
+        age = serializer.validated_data["age"]     # Easy to typo the key, no type safety
+```
+
+With **django-qp**, you get the power of Pydantic validation with full IDE autocompletion:
 
 ```python
 from pydantic import BaseModel, Field
@@ -29,8 +53,6 @@ class MyView(QueryParamsMixinView[UserParams], View):
 ```
 
 ---
-
-# Django QP
 
 A lightweight library for Django and Django Rest Framework that enables validation of query parameters using Pydantic models, inspired by FastAPI's approach.
 
@@ -385,6 +407,30 @@ async def my_view(request: EnhancedHttpRequest[MyParams]):
 ```
 
 Requires Django >= 4.2. DRF async views (>= 3.15) are also supported.
+
+## Changelog
+
+### v0.2.0
+
+- Dropped Django 3.2 support (minimum is now Django 4.2)
+- Added async view support for both function-based and class-based views
+- DRF async views (>= 3.15) are also supported
+- Added Python 3.14 support
+
+### v0.1.0
+
+- Initial release
+- Django 3.2+ support (sync views only)
+- Pydantic-based query parameter validation
+- Class-based view mixin (`QueryParamsMixinView[T]`)
+- Function-based view decorator (`@validate_query_params`)
+- Direct validation function (`process_query_params`)
+- Support for comma-separated list parameters
+- Action-specific models for ViewSets
+- Method-specific models for function-based views
+- Custom error messages and status codes
+- Generic type annotations for IDE autocompletion
+- DRF as optional dependency (`pip install django-qp[drf]`)
 
 ## Running Tests
 
