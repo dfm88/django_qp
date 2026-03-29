@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import inspect
 from collections.abc import Callable, Mapping
 from typing import Any, cast, overload
 
@@ -129,6 +130,34 @@ def validate_query_params(
     field_error_status_codes = field_error_status_codes or {}
 
     def decorator(view_func: ViewFunc) -> Callable[..., Any]:
+        if inspect.iscoroutinefunction(view_func):
+
+            @functools.wraps(view_func)
+            async def async_wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+                is_drf = is_drf_request(request)
+
+                resolved_model = _get_model_for_request(model, request)
+
+                if resolved_model is None:
+                    return await view_func(request, *args, **kwargs)
+
+                try:
+                    params = process_query_params(request, resolved_model)
+                    enhanced_request = cast(EnhancedHttpRequest, request)
+                    enhanced_request.validated_params = params
+                    return await view_func(request, *args, **kwargs)
+                except QueryParamsError as e:
+                    return create_error_response(
+                        errors=e.detail,
+                        error_title=error_title,
+                        error_status_code=error_status_code,
+                        is_drf=is_drf,
+                        field_error_messages=field_error_messages,
+                        field_error_status_codes=field_error_status_codes,
+                    )
+
+            return async_wrapper
+
         @functools.wraps(view_func)
         def wrapper(request: HttpRequest, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
             is_drf = is_drf_request(request)

@@ -37,7 +37,7 @@ A lightweight library for Django and Django Rest Framework that enables validati
 ## Requirements
 
 - Python >= 3.10, < 3.15
-- Django >= 3.2, < 7.0
+- Django >= 4.2, < 7.0
 - Pydantic >= 2.0
 - Django REST Framework >= 3.15.2 (**optional**)
 
@@ -64,6 +64,7 @@ A lightweight library for Django and Django Rest Framework that enables validati
 - Custom error messages and status codes
 - Generic type annotations for IDE autocompletion
 - Enhanced type hints for request objects in function-based views
+- Transparent async view support (Django 4.2+, DRF 3.15+)
 
 ## Installation
 
@@ -362,6 +363,28 @@ def dynamic_view(request: EnhancedHttpRequest[SimpleParams | DetailedParams]):
 ```
 
 This approach gives you the full benefits of type checking while still supporting dynamic model selection.
+
+## Async Views
+
+Async views are supported out of the box. The library auto-detects whether your view is async and handles it transparently — no API changes, no special imports. Both the mixin and decorator work with async views:
+
+```python
+# Async CBV — works exactly like sync
+class MyView(QueryParamsMixinView[MyParams], View):
+    validated_params_model = MyParams
+
+    async def get(self, request):
+        params = self.validated_params
+        return JsonResponse({"name": params.name})
+
+# Async FBV — works exactly like sync
+@validate_query_params(MyParams)
+async def my_view(request: EnhancedHttpRequest[MyParams]):
+    params = request.validated_params
+    return JsonResponse({"name": params.name})
+```
+
+Requires Django >= 4.2. DRF async views (>= 3.15) are also supported.
 
 ## Running Tests
 

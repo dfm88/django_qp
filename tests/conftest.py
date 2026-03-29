@@ -314,3 +314,65 @@ if HAS_DRF:
                     "priority": params.priority,
                 },
             )
+
+
+# --- Async views ---
+
+
+class AsyncMockBasicDjangoView(QueryParamsMixinView[MockParams], View):
+    """Async Django view with query parameter validation."""
+
+    def get_query_params_class(self, action: str | None) -> type[MockParams] | None:
+        """Return MockParams for GET."""
+        if action == "get":
+            return MockParams
+        return None
+
+    async def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        """Async GET handler."""
+        params: MockParams | None = self.validated_params
+        assert isinstance(params, MockParams)
+        return HttpResponse(f"async: name={params.name}, age={params.age}")
+
+
+@validate_query_params(MockParams)
+async def async_function_view(request: EnhancedHttpRequest[MockParams]) -> HttpResponse:
+    """Async function-based view with validation."""
+    params = request.validated_params
+    return HttpResponse(f"async: name={params.name}, age={params.age}")
+
+
+@validate_query_params(
+    {
+        "get": GetQueryParams,
+        "post": PostQueryParams,
+    },
+)
+async def async_method_specific_view(request: HttpRequest) -> HttpResponse:
+    """Async function-based view with method-specific validation."""
+    if request.method == "GET":
+        params = request.validated_params
+        return HttpResponse(f"async: filter={params.filter}, sort_by={params.sort_by or 'default'}")
+    elif request.method == "POST":
+        params = request.validated_params
+        return HttpResponse(f"async: data={params.data}, priority={params.priority}")
+    return HttpResponse("async: no params")
+
+
+if HAS_DRF:
+
+    class AsyncMockBasicDRFView(QueryParamsMixinView, APIView):
+        """Async DRF APIView with query parameter validation."""
+
+        validated_params_model = MockParams
+
+        async def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:
+            """Async GET handler."""
+            params = self.validated_params
+            return Response(
+                {
+                    "name": params.name,
+                    "age": params.age,
+                    "tags": params.tags,
+                },
+            )

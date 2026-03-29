@@ -11,7 +11,6 @@ keywords = ["django", "drf", "pydantic", "query", "parameters", "validation", "f
 classifiers = [
     "Environment :: Web Environment",
     "Framework :: Django",
-    "Framework :: Django :: 3.2",
     "Framework :: Django :: 4.2",
     "Framework :: Django :: 5.0",
     "Framework :: Django :: 5.1",
@@ -27,7 +26,7 @@ classifiers = [
 
 requires-python = ">=3.10,<3.15"
 dependencies = [
-    "django>=3.2,<7.0",
+    "django>=4.2,<7.0",
     "pydantic>=2.0",
 ]
 
@@ -40,6 +39,7 @@ dev = [
     "pytest>=8.3.5",
     "pytest-cov>=6.0.0",
     "pytest-django>=4.10.0",
+    "pytest-asyncio>=0.23",
     "ruff>=0.9.10",
     "ipdb>=0.13.13",
     "mypy>=1.15.0",
