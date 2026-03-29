@@ -99,4 +99,4 @@ jobs:
         run: uv pip install "djangorestframework>=3.15.2"
 
       - name: Run tests
-        run: uv run pytest
+        run: .venv/bin/pytest
