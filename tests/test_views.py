@@ -3,14 +3,11 @@
 from typing import Any
 
 import pytest
-from conftest import (
-    MockParams,
-)
 from django.http import HttpRequest, HttpResponse
 from django.test import Client
 from django.views import View
 
-from django_qp._compat import HAS_DRF
+from django_qp._compat import HAS_DRF, HAS_PYDANTIC
 from django_qp.mixins import QueryParamsMixinView
 
 if HAS_DRF:
@@ -19,20 +16,23 @@ if HAS_DRF:
     from rest_framework.views import APIView
 
 drf_required = pytest.mark.skipif(not HAS_DRF, reason="DRF not installed")
+pydantic_required = pytest.mark.skipif(not HAS_PYDANTIC, reason="pydantic not installed")
+
+if HAS_PYDANTIC:
+    from conftest import MockParams
+
+    class BasicDjangoView(QueryParamsMixinView[MockParams], View):
+        """Basic Django view with query parameter validation."""
+
+        validated_params_model = MockParams
+
+        def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+            """Handle GET request and return user details."""
+            params = self.validated_params
+            return HttpResponse(f"name={params.name}, age={params.age}")
 
 
-class BasicDjangoView(QueryParamsMixinView[MockParams], View):
-    """Basic Django view with query parameter validation."""
-
-    validated_params_model = MockParams
-
-    def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        """Handle GET request and return user details."""
-        params = self.validated_params
-        return HttpResponse(f"name={params.name}, age={params.age}")
-
-
-if HAS_DRF:
+if HAS_PYDANTIC and HAS_DRF:
 
     class BasicDRFView(QueryParamsMixinView, APIView):
         """Basic DRF view with query parameter validation."""
@@ -51,6 +51,7 @@ if HAS_DRF:
             )
 
 
+@pydantic_required
 @pytest.mark.django_db
 class TestDjangoViews:
     """Test Django views with query parameter validation."""
@@ -83,7 +84,7 @@ class TestDjangoViews:
         assert "error" in response.content.decode()
 
 
-@drf_required
+@pytest.mark.skipif(not HAS_PYDANTIC or not HAS_DRF, reason="pydantic and DRF required")
 @pytest.mark.django_db
 class TestDRFViews:
     """Test DRF view with valid query parameters."""
@@ -118,7 +119,7 @@ class TestDRFViews:
         assert "error" in response.content.decode()
 
 
-@drf_required
+@pytest.mark.skipif(not HAS_PYDANTIC or not HAS_DRF, reason="pydantic and DRF required")
 @pytest.mark.django_db
 class TestViewSets:
     """Test ViewSets with various query parameters."""
@@ -142,15 +143,12 @@ class TestViewSets:
             {"sort": "name", "page": "invalid"},
         )
         assert response.status_code == 422
-        assert response.json() == {
-            "detail": "Invalid query parameters",
-            "errors": {
-                "page": [
-                    "Input should be a valid integer, unable to parse string as an integer",
-                ],
-            },
-            "title": "Validation Error",
-        }
+        data = response.json()
+        assert data["title"] == "Validation Error"
+        assert data["detail"] == "Invalid query parameters"
+        page_errors = [e for e in data["errors"] if e["field"] == "page"]
+        assert len(page_errors) == 1
+        assert "valid integer" in page_errors[0]["msg"]
 
     def test_retrieve_valid_params(self) -> None:
         """Test ViewSet retrieve method with valid query parameters."""
@@ -182,34 +180,28 @@ class TestViewSets:
             {"name": "John", "age": "invalid"},
         )
         assert response.status_code == 422
-        assert response.json() == {
-            "detail": "Invalid query parameters",
-            "errors": {
-                "age": [
-                    "Input should be a valid integer, unable to parse string as an integer",
-                ],
-            },
-            "title": "Validation Error",
-        }
+        data = response.json()
+        assert data["title"] == "Validation Error"
+        assert data["detail"] == "Invalid query parameters"
+        age_errors = [e for e in data["errors"] if e["field"] == "age"]
+        assert len(age_errors) == 1
+        assert "valid integer" in age_errors[0]["msg"]
 
     def test_not_a_pydantic_model(self) -> None:
-        """Test ViewSet with a non-Pydantic model."""
+        """Test ViewSet with a non-supported model type."""
         client = APIClient()
         response = client.get(
             "/api/items/not_a_pydantic_model/",
             {"name": "John", "age": "25"},
         )
         assert response.status_code == 422
-        assert response.json() == {
-            "detail": "Invalid query parameters",
-            "errors": {
-                "validated_params_model": ["Must be a Pydantic BaseModel subclass."],
-            },
-            "title": "Validation Error",
-        }
+        data = response.json()
+        assert data["title"] == "Validation Error"
+        assert data["detail"] == "Invalid query parameters"
+        assert any("not supported by any validation backend" in e["msg"] for e in data["errors"])
 
 
-@drf_required
+@pytest.mark.skipif(not HAS_PYDANTIC or not HAS_DRF, reason="pydantic and DRF required")
 @pytest.mark.parametrize(
     "method",
     [
@@ -229,7 +221,7 @@ def test_api_function_view_valid_params(client: Client, method: str) -> None:
     assert response.data["method"] == method.upper()
 
 
-@drf_required
+@pytest.mark.skipif(not HAS_PYDANTIC or not HAS_DRF, reason="pydantic and DRF required")
 @pytest.mark.parametrize(
     "method",
     [
@@ -244,41 +236,38 @@ def test_api_function_view_invalid_params(client: Client, method: str) -> None:
         "/api/test-func/?name=John&age=invalid",
     )
     assert response.status_code == 422
-    assert response.json() == {
-        "detail": "Invalid query parameters",
-        "errors": {
-            "age": [
-                "Input should be a valid integer, unable to parse string as an integer",
-            ],
-        },
-        "title": "Validation Error",
-    }
+    data = response.json()
+    assert data["title"] == "Validation Error"
+    assert data["detail"] == "Invalid query parameters"
+    age_errors = [e for e in data["errors"] if e["field"] == "age"]
+    assert len(age_errors) == 1
+    assert "valid integer" in age_errors[0]["msg"]
 
 
-@drf_required
+@pytest.mark.skipif(not HAS_PYDANTIC or not HAS_DRF, reason="pydantic and DRF required")
 @pytest.mark.django_db
 class TestCustomErrorHandling:
     """Test custom error handling and status codes."""
 
     def test_custom_error_messages(self) -> None:
         """Test view with custom error messages."""
-        # Register the view
-
         # Test with invalid age
         client = APIClient()
         response = client.get("/custom-errors/", {"name": "John", "age": "-5"})
         assert response.status_code == 422
         result = response.json()
         assert "errors" in result
-        assert "age" in result["errors"]
-        assert "Age must be a positive number." in result["errors"]["age"]
+        age_errors = [e for e in result["errors"] if e["field"] == "age"]
+        assert len(age_errors) >= 1
+        assert age_errors[0]["msg"] == "Age must be a positive number."
 
         # Test with invalid type
         response = client.get("/custom-errors/", {"name": "John", "age": "invalid"})
         assert response.status_code == 422
         result = response.json()
-        assert "age" in result["errors"]
-        assert "Invalid age format provided." in result["errors"]["age"]
+        age_errors = [e for e in result["errors"] if e["field"] == "age"]
+        assert len(age_errors) >= 1
+        assert age_errors[0]["msg"] == "Invalid age format provided."
 
     def test_custom_status_codes(self) -> None:
         """Test view with custom status codes."""
@@ -295,6 +284,7 @@ class TestCustomErrorHandling:
 
 
 # Test classes for method-specific validation
+@pydantic_required
 class TestMethodSpecificViews:
     """Test views with method-specific validation."""
 
@@ -315,14 +305,16 @@ class TestMethodSpecificViews:
         response = client.get("/method-specific/?invalid=param")
         assert response.status_code == 422
         error_data = response.json()
-        assert "filter" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "filter" in field_names
 
     def test_post_method_validation_error(self, client: Client) -> None:
         """Test POST request with invalid parameters."""
         response = client.post("/method-specific/?data=test&priority=10")
         assert response.status_code == 422
         error_data = response.json()
-        assert "priority" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "priority" in field_names
 
     def test_fallback_method_validation(self, client: Client) -> None:
         """Test fallback to default model for unmapped methods."""
@@ -331,7 +323,7 @@ class TestMethodSpecificViews:
         assert "name=John, age=25" in response.content.decode()
 
 
-@drf_required
+@pytest.mark.skipif(not HAS_PYDANTIC or not HAS_DRF, reason="pydantic and DRF required")
 class TestApiMethodSpecificViews:
     """Test API views with method-specific validation."""
 
@@ -365,10 +357,11 @@ class TestApiMethodSpecificViews:
         response = client.get("/api/method-specific/?sort_by=name")  # Missing required 'filter'
         assert response.status_code == 422
         error_data = response.json()
-        assert "filter" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "filter" in field_names
 
 
-@drf_required
+@pytest.mark.skipif(not HAS_PYDANTIC or not HAS_DRF, reason="pydantic and DRF required")
 class TestDynamicModelResolver:
     """Test views with dynamically resolved models."""
 
@@ -396,7 +389,8 @@ class TestDynamicModelResolver:
         response = client.get("/api/dynamic-model/?use_post_model=true&data=test_data&priority=10")
         assert response.status_code == 422
         error_data = response.json()
-        assert "priority" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "priority" in field_names
 
 
 class TestMROEnforcement:

@@ -1,13 +1,13 @@
 [project]
 name = "django-qp"
 version = "0.2.0"
-description = "Django query parameter validation using Pydantic, inspired by FastAPI"
+description = "Django query parameter validation with pluggable backends (pydantic, msgspec)"
 readme = "README.md"
 authors = [
     { name = "Diego Margoni", email = "diegof.university@gmail.com" }
 ]
 license = { text = "MIT" }
-keywords = ["django", "drf", "pydantic", "query", "parameters", "validation", "fastapi"]
+keywords = ["django", "drf", "pydantic", "msgspec", "query", "parameters", "validation", "fastapi"]
 classifiers = [
     "Environment :: Web Environment",
     "Framework :: Django",
@@ -27,15 +27,19 @@ classifiers = [
 requires-python = ">=3.10,<3.15"
 dependencies = [
     "django>=4.2,<7.0",
-    "pydantic>=2.0",
+    "msgspec>=0.19.0",
 ]
 
 [project.optional-dependencies]
+pydantic = ["pydantic>=2.0"]
 drf = ["djangorestframework>=3.15.2"]
+all = ["pydantic>=2.0", "djangorestframework>=3.15.2"]
 
 [dependency-groups]
 dev = [
     "djangorestframework>=3.15.2",
+    "pydantic>=2.0",
+    "msgspec>=0.19.0",
     "pytest>=8.3.5",
     "pytest-cov>=6.0.0",
     "pytest-django>=4.10.0",

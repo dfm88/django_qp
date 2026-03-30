@@ -5,13 +5,10 @@ import json
 import pytest
 from django.http import JsonResponse
 from django.test import RequestFactory
-from pydantic import BaseModel, Field
 
-from django_qp._compat import HAS_DRF
+from django_qp._compat import HAS_DRF, HAS_MSGSPEC, HAS_PYDANTIC
 from django_qp.core import (
     create_error_response,
-    format_pydantic_errors,
-    get_status_code_for_error,
     is_drf_request,
     process_query_params,
 )
@@ -20,9 +17,13 @@ from django_qp.exceptions import QueryParamsError
 if HAS_DRF:
     from rest_framework.response import Response
 
+pydantic_required = pytest.mark.skipif(not HAS_PYDANTIC, reason="pydantic not installed")
 
+
+@pydantic_required
 def test_list_conversion(rf: RequestFactory) -> None:
     """Test comma-separated values are split into lists."""
+    from pydantic import BaseModel
 
     class ListParams(BaseModel):
         tags: list[str]
@@ -32,8 +33,10 @@ def test_list_conversion(rf: RequestFactory) -> None:
     assert params.tags == ["a", "b", "c"]
 
 
+@pydantic_required
 def test_type_conversion(rf: RequestFactory) -> None:
     """Test query string values are coerced to the declared field types."""
+    from pydantic import BaseModel
 
     class TypeParams(BaseModel):
         num: int
@@ -45,8 +48,10 @@ def test_type_conversion(rf: RequestFactory) -> None:
     assert params.flag is True
 
 
+@pydantic_required
 def test_validation_error(rf: RequestFactory) -> None:
     """Test that constraint violations raise QueryParamsError."""
+    from pydantic import BaseModel, Field
 
     class ValidParams(BaseModel):
         age: int = Field(ge=0)
@@ -56,102 +61,143 @@ def test_validation_error(rf: RequestFactory) -> None:
         process_query_params(request, ValidParams)
 
 
-def test_format_pydantic_errors() -> None:
-    """Test the format_pydantic_errors function."""
-    # Sample Pydantic errors
-    errors = [
-        {"loc": ("name",), "msg": "field required", "type": "missing"},
-        {"loc": ("age",), "msg": "value is not a valid integer", "type": "type_error"},
-    ]
+@pydantic_required
+def test_format_errors_via_pydantic_backend() -> None:
+    """Test PydanticBackend.format_errors formats errors correctly."""
+    from pydantic import BaseModel
+    from pydantic import ValidationError as PydanticValidationError
 
-    # Format errors with no custom messages
-    formatted = format_pydantic_errors(errors)
-    assert "name" in formatted
-    assert "age" in formatted
-    assert formatted["name"] == ["field required"]
-    assert formatted["age"] == ["value is not a valid integer"]
+    from django_qp.backends.pydantic_backend import PydanticBackend
 
-    # Format errors with custom messages
-    custom_messages = {
-        "name": {"missing": "Please provide a name"},
-        "age": {"type_error": "Age must be a number"},
-    }
+    class TestModel(BaseModel):
+        name: str
+        age: int
 
-    formatted_custom = format_pydantic_errors(errors, custom_messages)
-    assert formatted_custom["name"] == ["Please provide a name"]
-    assert formatted_custom["age"] == ["Age must be a number"]
+    # Trigger a real pydantic validation error
+    try:
+        TestModel()  # type: ignore[call-arg]
+    except PydanticValidationError as exc:
+        # Format errors with no custom messages
+        formatted, status_code = PydanticBackend.format_errors(exc, None, None, 422)
+        assert status_code == 422
+        assert len(formatted) >= 1
+        field_names = [e["field"] for e in formatted]
+        assert "name" in field_names
+        assert "age" in field_names
 
-
-def test_get_status_code_for_error() -> None:
-    """Test the get_status_code_for_error function."""
-    errors = [
-        {"loc": ("name",), "msg": "field required", "type": "missing"},
-    ]
-
-    # With no custom status codes
-    status = get_status_code_for_error(errors, 422, None)
-    assert status == 422
-
-    # With custom status codes
-    status = get_status_code_for_error(errors, 422, {"name": 400})
-    assert status == 400
-
-    # With custom status code for a different field
-    status = get_status_code_for_error(errors, 422, {"age": 400})
-    assert status == 422
+        # Format errors with custom messages
+        custom_messages = {
+            "name": {"missing": "Please provide a name"},
+            "age": {"missing": "Age is required"},
+        }
+        formatted_custom, _ = PydanticBackend.format_errors(exc, custom_messages, None, 422)
+        for error in formatted_custom:
+            if error["field"] == "name":
+                assert error["msg"] == "Please provide a name"
+            elif error["field"] == "age":
+                assert error["msg"] == "Age is required"
 
 
+@pydantic_required
+def test_format_errors_status_codes_via_pydantic_backend() -> None:
+    """Test PydanticBackend.format_errors with custom status codes."""
+    from pydantic import BaseModel
+    from pydantic import ValidationError as PydanticValidationError
+
+    from django_qp.backends.pydantic_backend import PydanticBackend
+
+    class TestModel(BaseModel):
+        name: str
+
+    try:
+        TestModel()  # type: ignore[call-arg]
+    except PydanticValidationError as exc:
+        # With no custom status codes
+        _, status = PydanticBackend.format_errors(exc, None, None, 422)
+        assert status == 422
+
+        # With custom status codes
+        _, status = PydanticBackend.format_errors(exc, None, {"name": 400}, 422)
+        assert status == 400
+
+        # With custom status code for a different field
+        _, status = PydanticBackend.format_errors(exc, None, {"age": 400}, 422)
+        assert status == 422
+
+
+@pydantic_required
 def test_create_error_response_django() -> None:
     """Test create_error_response function for Django responses."""
-    errors = [
-        {"loc": ("name",), "msg": "field required", "type": "missing"},
-    ]
+    from pydantic import BaseModel
+    from pydantic import ValidationError as PydanticValidationError
 
-    response = create_error_response(errors, is_drf=False)
+    class TestModel(BaseModel):
+        name: str
 
-    assert isinstance(response, JsonResponse)
-    assert response.status_code == 422
+    try:
+        TestModel()  # type: ignore[call-arg]
+    except PydanticValidationError as pydantic_exc:
+        exc = QueryParamsError(pydantic_exc)
 
-    # Test with custom status code and title
-    response = create_error_response(
-        errors,
-        error_title="Custom Error",
-        error_status_code=400,
-        is_drf=False,
-    )
+        response = create_error_response(exc, is_drf=False, model=TestModel)
 
-    assert response.status_code == 400
+        assert isinstance(response, JsonResponse)
+        assert response.status_code == 422
 
-    # Extract the response content
-    data = json.loads(response.content.decode("utf-8"))
-    assert data["title"] == "Custom Error"
-    assert "name" in data["errors"]
+        # Test with custom status code and title
+        response = create_error_response(
+            exc,
+            error_title="Custom Error",
+            error_status_code=400,
+            is_drf=False,
+            model=TestModel,
+        )
+
+        assert response.status_code == 400
+
+        # Extract the response content
+        data = json.loads(response.content.decode("utf-8"))
+        assert data["title"] == "Custom Error"
+        # Errors are now a list of dicts with "field" key
+        field_names = [e["field"] for e in data["errors"]]
+        assert "name" in field_names
 
 
-@pytest.mark.skipif(not HAS_DRF, reason="DRF not installed")
+@pytest.mark.skipif(not HAS_PYDANTIC or not HAS_DRF, reason="pydantic and DRF required")
 def test_create_error_response_drf() -> None:
     """Test create_error_response function for DRF responses."""
-    errors = [
-        {"loc": ("name",), "msg": "field required", "type": "missing"},
-    ]
+    from pydantic import BaseModel
+    from pydantic import ValidationError as PydanticValidationError
 
-    response = create_error_response(errors, is_drf=True)
+    class TestModel(BaseModel):
+        name: str
 
-    assert isinstance(response, Response)
-    assert response.status_code == 422
+    try:
+        TestModel()  # type: ignore[call-arg]
+    except PydanticValidationError as pydantic_exc:
+        exc = QueryParamsError(pydantic_exc)
 
-    # Test with custom messages
-    custom_messages = {
-        "name": {"missing": "Please provide a name"},
-    }
+        response = create_error_response(exc, is_drf=True, model=TestModel)
 
-    response = create_error_response(
-        errors,
-        is_drf=True,
-        field_error_messages=custom_messages,
-    )
+        assert isinstance(response, Response)
+        assert response.status_code == 422
 
-    assert response.data["errors"]["name"] == ["Please provide a name"]
+        # Test with custom messages
+        custom_messages = {
+            "name": {"missing": "Please provide a name"},
+        }
+
+        response = create_error_response(
+            exc,
+            is_drf=True,
+            model=TestModel,
+            field_error_messages=custom_messages,
+        )
+
+        # Errors are now a list of dicts
+        errors = response.data["errors"]
+        name_errors = [e for e in errors if e["field"] == "name"]
+        assert name_errors[0]["msg"] == "Please provide a name"
 
 
 @pytest.mark.skipif(not HAS_DRF, reason="DRF not installed")
@@ -173,8 +219,10 @@ def test_is_drf_request(rf: RequestFactory) -> None:
     assert is_drf_request(fake_drf_request) is False
 
 
+@pydantic_required
 def test_multi_value_query_params(rf: RequestFactory) -> None:
     """Test repeated query keys are collected into a list."""
+    from pydantic import BaseModel
 
     class ListParams(BaseModel):
         tags: list[str]
@@ -184,8 +232,10 @@ def test_multi_value_query_params(rf: RequestFactory) -> None:
     assert params.tags == ["a", "b"]
 
 
+@pydantic_required
 def test_multi_value_with_comma_split(rf: RequestFactory) -> None:
     """Test repeated keys with commas are split and flattened."""
+    from pydantic import BaseModel
 
     class ListParams(BaseModel):
         tags: list[str]
@@ -195,8 +245,10 @@ def test_multi_value_with_comma_split(rf: RequestFactory) -> None:
     assert params.tags == ["a", "b", "c", "d"]
 
 
+@pydantic_required
 def test_single_value_list_field_unchanged(rf: RequestFactory) -> None:
     """Test comma-separated single value still works (regression guard)."""
+    from pydantic import BaseModel
 
     class ListParams(BaseModel):
         tags: list[str]
@@ -206,8 +258,10 @@ def test_single_value_list_field_unchanged(rf: RequestFactory) -> None:
     assert params.tags == ["a", "b", "c"]
 
 
+@pydantic_required
 def test_scalar_field_multi_value_takes_last(rf: RequestFactory) -> None:
     """Test scalar fields with repeated keys take the last value (QueryDict default)."""
+    from pydantic import BaseModel
 
     class ScalarParams(BaseModel):
         name: str
@@ -228,8 +282,22 @@ def test_extract_request_data_returns_querydict(rf: RequestFactory) -> None:
     assert isinstance(data, QueryDict)
 
 
+def test_compat_flags_exist() -> None:
+    """Test that backend availability flags are importable."""
+    from django_qp._compat import HAS_DRF, HAS_MSGSPEC, HAS_PYDANTIC
+
+    # msgspec is a core dep, always True
+    assert HAS_MSGSPEC is True
+    # pydantic may or may not be installed depending on test environment
+    assert isinstance(HAS_PYDANTIC, bool)
+    assert isinstance(HAS_DRF, bool)
+
+
+@pydantic_required
 def test_plain_dict_fallback(rf: RequestFactory, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test list processing works when _extract_request_data returns a plain dict."""
+    from pydantic import BaseModel
+
     import django_qp.core
 
     class ListParams(BaseModel):
@@ -241,3 +309,58 @@ def test_plain_dict_fallback(rf: RequestFactory, monkeypatch: pytest.MonkeyPatch
     request = rf.get("/test/")
     params = process_query_params(request, ListParams)
     assert params.tags == ["x", "y", "z"]
+
+
+# --- Msgspec tests ---
+
+
+@pytest.mark.skipif(not HAS_MSGSPEC, reason="msgspec not installed")
+def test_process_query_params_msgspec(rf: RequestFactory) -> None:
+    """Test basic msgspec Struct validation."""
+    import msgspec
+
+    class MsgspecParams(msgspec.Struct):
+        name: str
+        age: int
+
+    request = rf.get("/test/", {"name": "alice", "age": "30"})
+    params = process_query_params(request, MsgspecParams)
+    assert params.name == "alice"
+    assert params.age == 30
+
+
+@pytest.mark.skipif(not HAS_MSGSPEC, reason="msgspec not installed")
+def test_process_query_params_msgspec_list(rf: RequestFactory) -> None:
+    """Test comma-splitting works for msgspec Struct list fields."""
+    import msgspec
+
+    class MsgspecListParams(msgspec.Struct):
+        tags: list[str]
+
+    request = rf.get("/test/", {"tags": "a,b,c"})
+    params = process_query_params(request, MsgspecListParams)
+    assert params.tags == ["a", "b", "c"]
+
+
+@pytest.mark.skipif(not HAS_MSGSPEC, reason="msgspec not installed")
+def test_process_query_params_msgspec_validation_error(rf: RequestFactory) -> None:
+    """Test that msgspec validation errors raise QueryParamsError."""
+    import msgspec
+
+    class MsgspecRequiredParams(msgspec.Struct):
+        name: str
+
+    request = rf.get("/test/")
+    with pytest.raises(QueryParamsError):
+        process_query_params(request, MsgspecRequiredParams)
+
+
+def test_process_query_params_unknown_model(rf: RequestFactory) -> None:
+    """Test that an unsupported model type raises TypeError."""
+
+    class NotAModel:
+        pass
+
+    request = rf.get("/test/")
+    with pytest.raises(TypeError, match="No validation backend found"):
+        process_query_params(request, NotAModel)

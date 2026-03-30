@@ -5,14 +5,16 @@ import inspect
 import pytest
 from django.test import AsyncClient
 
-from django_qp._compat import HAS_DRF
+from django_qp._compat import HAS_DRF, HAS_PYDANTIC
 from django_qp.decorators import validate_query_params
 
 drf_required = pytest.mark.skipif(not HAS_DRF, reason="DRF not installed")
+pydantic_required = pytest.mark.skipif(not HAS_PYDANTIC, reason="pydantic not installed")
 
 pytestmark = pytest.mark.asyncio
 
 
+@pydantic_required
 class TestAsyncDjangoDecorator:
     """Test async Django FBVs with the decorator."""
 
@@ -29,7 +31,8 @@ class TestAsyncDjangoDecorator:
         response = await client.get("/async-test-func/?name=John&age=invalid")
         assert response.status_code == 422
         error_data = response.json()
-        assert "age" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "age" in field_names
 
     async def test_missing_required_param(self) -> None:
         """Test async FBV with missing required parameter."""
@@ -37,9 +40,11 @@ class TestAsyncDjangoDecorator:
         response = await client.get("/async-test-func/?age=25")
         assert response.status_code == 422
         error_data = response.json()
-        assert "name" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "name" in field_names
 
 
+@pydantic_required
 class TestAsyncMethodSpecificDecorator:
     """Test async FBVs with method-specific model mapping."""
 
@@ -63,7 +68,8 @@ class TestAsyncMethodSpecificDecorator:
         response = await client.get("/async-method-specific/?invalid=param")
         assert response.status_code == 422
         error_data = response.json()
-        assert "filter" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "filter" in field_names
 
     async def test_post_method_validation_error(self) -> None:
         """Test POST request with invalid parameters."""
@@ -71,10 +77,11 @@ class TestAsyncMethodSpecificDecorator:
         response = await client.post("/async-method-specific/?data=test&priority=10")
         assert response.status_code == 422
         error_data = response.json()
-        assert "priority" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "priority" in field_names
 
 
-@drf_required
+@pytest.mark.skipif(not HAS_PYDANTIC or not HAS_DRF, reason="pydantic and DRF required")
 @pytest.mark.filterwarnings("ignore::pytest.PytestWarning")
 class TestAsyncDRFDecoratorLimitation:
     """Document that DRF's @api_view does not support async FBVs.

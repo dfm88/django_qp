@@ -1,16 +1,19 @@
 """Exceptions for django-qp query parameter validation."""
 
-from .internal_typing import ErrorList
-
 
 class QueryParamsError(Exception):
     """Exception raised when query parameters validation fails.
 
     Attributes:
-        detail: Detailed error information from Pydantic
+        original_exception: The backend-specific validation error.
     """
 
-    def __init__(self, detail: list[ErrorList]) -> None:
-        """Initialize with validation error details from Pydantic."""
-        self.detail = detail
-        super().__init__(str(detail))
+    def __init__(self, original_exception: Exception) -> None:
+        """Initialize with the original backend validation exception.
+
+        Args:
+            original_exception: The backend-specific error (e.g., PydanticValidationError,
+                msgspec.ValidationError).
+        """
+        self.original_exception = original_exception
+        super().__init__(str(original_exception))

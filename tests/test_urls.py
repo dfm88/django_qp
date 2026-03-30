@@ -1,27 +1,39 @@
 """URL configuration for django-qp tests."""
 
-from conftest import (
-    AsyncMockBasicDjangoView,
-    MockBasicDjangoView,
-    async_function_view,
-    async_method_specific_view,
-    function_view,
-    method_specific_view,
-)
 from django.urls import path
 
-from django_qp._compat import HAS_DRF
+from django_qp._compat import HAS_DRF, HAS_MSGSPEC, HAS_PYDANTIC
 
-urlpatterns = [
-    path("test/", MockBasicDjangoView.as_view(), name="test"),
-    path("test-func/", function_view, name="test-func"),
-    path("method-specific/", method_specific_view, name="method-specific"),
-    path("async-test/", AsyncMockBasicDjangoView.as_view(), name="async-test"),
-    path("async-test-func/", async_function_view, name="async-test-func"),
-    path("async-method-specific/", async_method_specific_view, name="async-method-specific"),
-]
+urlpatterns = []
 
-if HAS_DRF:
+if HAS_PYDANTIC:
+    from conftest import (
+        AsyncMockBasicDjangoView,
+        MockBasicDjangoView,
+        async_function_view,
+        async_method_specific_view,
+        function_view,
+        method_specific_view,
+    )
+
+    urlpatterns += [
+        path("test/", MockBasicDjangoView.as_view(), name="test"),
+        path("test-func/", function_view, name="test-func"),
+        path("method-specific/", method_specific_view, name="method-specific"),
+        path("async-test/", AsyncMockBasicDjangoView.as_view(), name="async-test"),
+        path("async-test-func/", async_function_view, name="async-test-func"),
+        path("async-method-specific/", async_method_specific_view, name="async-method-specific"),
+    ]
+
+if HAS_MSGSPEC:
+    from conftest import MsgspecMockBasicDjangoView, msgspec_function_view
+
+    urlpatterns += [
+        path("msgspec/basic/", MsgspecMockBasicDjangoView.as_view(), name="msgspec-basic"),
+        path("msgspec/function/", msgspec_function_view, name="msgspec-function"),
+    ]
+
+if HAS_PYDANTIC and HAS_DRF:
     from conftest import (
         AsyncMockBasicDRFView,
         CustomErrorView,

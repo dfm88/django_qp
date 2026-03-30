@@ -1,4 +1,4 @@
-"""Django query parameters validation using Pydantic."""
+"""Django query parameters validation with pluggable backends (pydantic, msgspec)."""
 
 from .core import process_query_params
 from .decorators import validate_query_params

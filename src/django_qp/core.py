@@ -2,51 +2,16 @@
 
 from __future__ import annotations
 
-import types
-from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any
 
 from django.http import HttpRequest, HttpResponse, JsonResponse
-from pydantic import BaseModel
-from pydantic import ValidationError as PydanticValidationError
 
 from ._compat import HAS_DRF
+from .backends import get_backend
 from .exceptions import QueryParamsError
 
 if TYPE_CHECKING:
     from django.http import QueryDict
-
-    from .internal_typing import ErrorDict, ErrorList, QParamsTypeCl
-
-
-def contains_list_type(annotation: type | None) -> bool:
-    """Recursively check if a type annotation contains a list type at any level.
-
-    Handles nested unions and complex type hierarchies.
-
-    Args:
-        annotation: Type annotation to check
-
-    Returns:
-        bool: True if the annotation contains a list type, False otherwise
-    """
-    # Check if it's directly a list
-    if not annotation:
-        return False
-
-    origin = get_origin(annotation)
-    if origin is list:
-        return True
-
-    # Check if it's a union (Union or |)
-    if origin in (
-        Union,
-        types.UnionType,
-    ) or isinstance(origin, types.UnionType):
-        for arg in get_args(annotation):
-            if contains_list_type(arg):
-                return True
-
-    return False
 
 
 def _extract_request_data(request: HttpRequest) -> QueryDict | dict[str, Any]:
@@ -66,131 +31,73 @@ def _extract_request_data(request: HttpRequest) -> QueryDict | dict[str, Any]:
 
 def process_query_params(
     request: HttpRequest,
-    model: type[QParamsTypeCl],
-) -> QParamsTypeCl:
-    """Process and validate query parameters using a Pydantic model.
+    model: type,
+) -> Any:  # noqa: ANN401
+    """Process and validate query parameters using a model.
+
+    Auto-detects the validation backend based on the model type
+    (pydantic BaseModel or msgspec Struct).
 
     Args:
         request: Django/DRF HTTP request
-        model: Pydantic model class for validation
+        model: Model class for validation (BaseModel or Struct)
 
     Returns:
-        Validated Pydantic model instance
+        Validated model instance
 
     Raises:
         QueryParamsError: When validation fails
-        TypeError: When model is not a Pydantic BaseModel subclass
+        TypeError: When model type is not supported by any backend
     """
-    if not isinstance(model, type) or not issubclass(model, BaseModel):
-        raise TypeError("model must be a Pydantic BaseModel subclass")
+    backend = get_backend(model)
+    list_fields = backend.get_list_fields(model)
 
-    # Get query params and request body data based on request type and method
     query_dict = _extract_request_data(request)
 
-    try:
-        # Convert list-typed fields using getlist() for multi-value support
-        processed_dict: dict[str, Any] = {}
-        for field_name, value in query_dict.items():
-            field = model.model_fields.get(field_name)
-            if field and contains_list_type(annotation=field.annotation):
-                # Use getlist() if available (QueryDict), otherwise wrap scalar
-                if hasattr(query_dict, "getlist"):
-                    values = query_dict.getlist(field_name)
-                else:
-                    values = value if isinstance(value, list) else [value]
-                # Comma-split each element, then flatten
-                expanded: list[Any] = []
-                for v in values:
-                    if isinstance(v, str):
-                        expanded.extend(v.split(","))
-                    else:
-                        expanded.append(v)
-                processed_dict[field_name] = expanded
+    # Convert list-typed fields using getlist() for multi-value support
+    processed_dict: dict[str, Any] = {}
+    for field_name, value in query_dict.items():
+        if field_name in list_fields:
+            # Use getlist() if available (QueryDict), otherwise wrap scalar
+            if hasattr(query_dict, "getlist"):
+                values = query_dict.getlist(field_name)
             else:
-                processed_dict[field_name] = value
+                values = value if isinstance(value, list) else [value]
+            # Comma-split each element, then flatten
+            expanded: list[Any] = []
+            for v in values:
+                if isinstance(v, str):
+                    expanded.extend(v.split(","))
+                else:
+                    expanded.append(v)
+            processed_dict[field_name] = expanded
+        else:
+            processed_dict[field_name] = value
 
-        # Validate with Pydantic (with better error context)
-        return model(**processed_dict)
-    except PydanticValidationError as e:
-        raise QueryParamsError(e.errors()) from e
-
-
-def format_pydantic_errors(
-    errors: list[ErrorList],
-    field_error_messages: dict[str, dict[str, str]] | None = None,
-) -> ErrorDict:
-    """Convert Pydantic validation errors to a standardized format with optional custom messages.
-
-    Args:
-        errors: List of Pydantic error dictionaries
-        field_error_messages: Dict mapping field names to dicts of error type -> message
-
-    Returns:
-        Dict mapping field names to lists of error messages
-    """
-    formatted_errors: dict[str, list[str]] = {}
-
-    for error in errors:
-        field_name = str(error.get("loc", ("",))[0])
-        error_type = str(error.get("type", ""))
-        default_message = error.get("msg", "Validation error")
-
-        # Check for custom error message
-        custom_message = None
-        if field_error_messages:
-            field_messages = field_error_messages.get(field_name, {})
-            custom_message = field_messages.get(error_type) or field_messages.get("__all__")
-
-        message = custom_message or default_message
-
-        if field_name not in formatted_errors:
-            formatted_errors[field_name] = []
-        formatted_errors[field_name].append(message)
-
-    return formatted_errors
-
-
-def get_status_code_for_error(
-    errors: list[ErrorList],
-    default_status_code: int,
-    field_error_status_codes: dict[str, int] | None = None,
-) -> int:
-    """Determine the appropriate HTTP status code for validation errors.
-
-    When multiple fields have errors, only the first error's field determines
-    the status code.
-
-    Args:
-        errors: List of Pydantic error dictionaries
-        default_status_code: Default HTTP status code to use
-        field_error_status_codes: Dict mapping field names to status codes
-
-    Returns:
-        HTTP status code to use for the error response
-    """
-    if not errors or not field_error_status_codes:
-        return default_status_code
-
-    field_name = str(errors[0].get("loc", ("",))[0])
-    return field_error_status_codes.get(field_name, default_status_code)
+    try:
+        return backend.validate(model, processed_dict)
+    except Exception as e:
+        raise QueryParamsError(e) from e
 
 
 def create_error_response(
-    errors: list[ErrorList],
+    exc: Exception,
     error_title: str = "Validation Error",
     error_status_code: int = 422,
     *,
     is_drf: bool = False,
+    model: type | None = None,
     field_error_messages: dict[str, dict[str, str]] | None = None,
     field_error_status_codes: dict[str, int] | None = None,
 ) -> HttpResponse:
     """Create an appropriate error response for Django or DRF.
 
     Args:
-        errors: List of Pydantic error dictionaries
+        exc: The QueryParamsError wrapping the backend exception.
         error_title: Title to include in error response
         error_status_code: Default HTTP status code to use
         is_drf: Whether to return a DRF Response
+        model: The model class (used to resolve the backend for error formatting)
         field_error_messages: Dict mapping field names to custom error messages
         field_error_status_codes: Dict mapping field names to custom HTTP status codes
 
@@ -200,13 +107,20 @@ def create_error_response(
     Raises:
         ImportError: When is_drf=True but djangorestframework is not installed
     """
-    status_code = get_status_code_for_error(
-        errors,
-        error_status_code,
-        field_error_status_codes,
-    )
+    # Get the original backend exception from QueryParamsError
+    original_exc = exc.original_exception if isinstance(exc, QueryParamsError) else exc
 
-    formatted_errors = format_pydantic_errors(errors, field_error_messages)
+    if model is not None:
+        backend = get_backend(model)
+        formatted_errors, status_code = backend.format_errors(
+            original_exc,
+            field_error_messages,
+            field_error_status_codes,
+            error_status_code,
+        )
+    else:
+        formatted_errors = [{"field": "", "type": "validation_error", "msg": str(original_exc)}]
+        status_code = error_status_code
 
     response_data = {
         "title": error_title,

@@ -8,18 +8,18 @@ from collections.abc import Callable, Mapping
 from typing import Any, cast, overload
 
 from django.http import HttpRequest
-from pydantic import BaseModel
 
+from .backends import get_backend
 from .core import create_error_response, is_drf_request, process_query_params
 from .exceptions import QueryParamsError
 from .internal_typing import EnhancedHttpRequest, QParamsTypeCl
 
 # Type for model resolver functions
-ModelResolver = Callable[[HttpRequest], type[BaseModel] | None]
+ModelResolver = Callable[[HttpRequest], type | None]
 # Type for method-specific model mappings
-MethodModelMap = Mapping[str, type[BaseModel]]
+MethodModelMap = Mapping[str, type]
 # Combined type for model parameter
-ModelArg = type[BaseModel] | MethodModelMap | ModelResolver
+ModelArg = type | MethodModelMap | ModelResolver
 
 # Define ViewFunc type for better readability
 ViewFunc = Callable[[HttpRequest], Any]
@@ -29,7 +29,7 @@ EnhancedViewFunc = Callable[[EnhancedHttpRequest[QParamsTypeCl]], Any]
 def _get_model_for_request(
     model_arg: ModelArg,
     request: HttpRequest,
-) -> type[BaseModel] | None:
+) -> type | None:
     """Resolve the appropriate model for the current request.
 
     Args:
@@ -37,11 +37,15 @@ def _get_model_for_request(
         request: The HTTP request
 
     Returns:
-        The appropriate Pydantic model class or None
+        The appropriate model class or None
     """
-    # Case 1: Single model for all methods
-    if isinstance(model_arg, type) and issubclass(model_arg, BaseModel):
-        return model_arg
+    # Case 1: Single model for all methods — check via backend detection
+    if isinstance(model_arg, type):
+        try:
+            get_backend(model_arg)
+            return model_arg
+        except TypeError:
+            pass
 
     # Case 2: Method-to-model mapping dictionary
     if isinstance(model_arg, dict):
@@ -98,11 +102,11 @@ def validate_query_params(
     field_error_messages: dict[str, dict[str, str]] | None = None,
     field_error_status_codes: dict[str, int] | None = None,
 ) -> Callable[[ViewFunc], Callable[..., Any]]:
-    """Decorator to validate query parameters using Pydantic models.
+    """Decorator to validate query parameters using validation models.
 
     Args:
         model: Either:
-            - A single Pydantic model class
+            - A single model class (pydantic BaseModel or msgspec Struct)
             - A dict mapping HTTP methods to model classes (use "" for default)
             - A callable that takes a request and returns a model class
         error_status_code: HTTP status code to use for validation errors (default: 422)
@@ -148,10 +152,11 @@ def validate_query_params(
                     return await view_func(request, *args, **kwargs)
                 except QueryParamsError as e:
                     return create_error_response(
-                        errors=e.detail,
+                        e,
                         error_title=error_title,
                         error_status_code=error_status_code,
                         is_drf=is_drf,
+                        model=resolved_model,
                         field_error_messages=field_error_messages,
                         field_error_status_codes=field_error_status_codes,
                     )
@@ -178,10 +183,11 @@ def validate_query_params(
                 return view_func(request, *args, **kwargs)
             except QueryParamsError as e:
                 return create_error_response(
-                    errors=e.detail,
+                    e,
                     error_title=error_title,
                     error_status_code=error_status_code,
                     is_drf=is_drf,
+                    model=resolved_model,
                     field_error_messages=field_error_messages,
                     field_error_status_codes=field_error_status_codes,
                 )

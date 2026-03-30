@@ -5,11 +5,10 @@ from __future__ import annotations
 import inspect
 from typing import TYPE_CHECKING, Any, ClassVar, Generic
 
-from pydantic import BaseModel
-
+from .backends import get_backend
 from .core import create_error_response, process_query_params
 from .exceptions import QueryParamsError
-from .internal_typing import ErrorList, QParamsTypeCl
+from .internal_typing import QParamsTypeCl
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -19,10 +18,11 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
     """Mixin to add query parameter validation to Django/DRF views.
 
     Generic Parameters:
-        QParamsTypeCl: A Pydantic BaseModel subclass that defines the query parameters structure.
+        QParamsTypeCl: A model type (pydantic BaseModel or msgspec Struct)
+            that defines the query parameters structure.
 
     Attributes:
-        validated_params_model: The Pydantic model class to use for validation.
+        validated_params_model: The model class to use for validation.
         validated_params: The validated query parameters instance.
         error_status_code: HTTP status code to use for validation errors (default: 422).
         error_title: Title to include in error responses (default: "Validation Error").
@@ -74,23 +74,29 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
         Override this method to provide dynamic model selection based on request or other factors.
 
         Returns:
-            The Pydantic model class for query parameters validation or None
+            The model class for query parameters validation or None
         """
         return self.validated_params_model
 
     @staticmethod
-    def _validate_model(model: BaseModel | object) -> bool:
-        """Validate that the provided model is a Pydantic BaseModel subclass.
+    def _validate_model(model: object) -> bool:
+        """Validate that the provided model is supported by a validation backend.
 
         Args:
             model: The model class to validate
 
         Returns:
-            bool: True if valid, False otherwise
+            bool: True if a backend supports this model, False otherwise
         """
-        return model is not None and isinstance(model, type) and issubclass(model, BaseModel)
+        if model is None or not isinstance(model, type):
+            return False
+        try:
+            get_backend(model)
+            return True
+        except TypeError:
+            return False
 
-    def create_error_response(self, errors: list[ErrorList]) -> HttpResponse:
+    def _create_error_response(self, exc: Exception, model: type | None = None) -> HttpResponse:
         """Create an error response for validation failures.
 
         Always returns a JsonResponse because this runs inside dispatch(),
@@ -98,16 +104,18 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
         A plain JsonResponse works in both Django and DRF contexts.
 
         Args:
-            errors: List of Pydantic error dictionaries
+            exc: The QueryParamsError or other exception.
+            model: The model class (used to resolve the backend for error formatting).
 
         Returns:
             Django HttpResponse with error details
         """
         return create_error_response(
-            errors=errors,
+            exc,
             error_title=self.error_title,
             error_status_code=self.error_status_code,
             is_drf=False,
+            model=model,
             field_error_messages=self.field_error_messages,
             field_error_status_codes=self.field_error_status_codes,
         )
@@ -133,7 +141,7 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
         """Process query params before view method execution.
 
         Supports both sync and async views. Validation is always synchronous
-        (reads request.GET + pydantic). For async views, wraps the entire
+        (reads request.GET + backend validation). For async views, wraps the entire
         dispatch flow in a coroutine so Django's ASGI handler can await it.
 
         Args:
@@ -168,27 +176,22 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
 
         if validated_params_model:
             if not self._validate_model(validated_params_model):
-                return self.create_error_response(
-                    [
-                        {
-                            "loc": ("validated_params_model",),
-                            "msg": "Must be a Pydantic BaseModel subclass.",
-                            "type": "validation_error",
-                            "input": validated_params_model,
-                        },
-                    ],
+                return self._create_error_response(
+                    ValueError(
+                        f"{validated_params_model.__name__} is not supported by any validation backend.",
+                    ),
                 )
             try:
                 self.validated_params = process_query_params(request, validated_params_model)
             except QueryParamsError as e:
-                return self.create_error_response(e.detail)
+                return self._create_error_response(e, model=validated_params_model)
 
         return super().dispatch(request, *args, **kwargs)  # type: ignore
 
     async def _async_dispatch(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
         """Asynchronous dispatch path: validate params then call the parent dispatch.
 
-        Validation itself is synchronous (reads request.GET + pydantic), but
+        Validation itself is synchronous (reads request.GET + backend validation), but
         the entire method is a coroutine so Django's ASGI handler can await it
         and error responses are returned correctly.
 
@@ -212,20 +215,15 @@ class QueryParamsMixinView(Generic[QParamsTypeCl]):
 
         if validated_params_model:
             if not self._validate_model(validated_params_model):
-                return self.create_error_response(
-                    [
-                        {
-                            "loc": ("validated_params_model",),
-                            "msg": "Must be a Pydantic BaseModel subclass.",
-                            "type": "validation_error",
-                            "input": validated_params_model,
-                        },
-                    ],
+                return self._create_error_response(
+                    ValueError(
+                        f"{validated_params_model.__name__} is not supported by any validation backend.",
+                    ),
                 )
             try:
                 self.validated_params = process_query_params(request, validated_params_model)
             except QueryParamsError as e:
-                return self.create_error_response(e.detail)
+                return self._create_error_response(e, model=validated_params_model)
 
         if HAS_DRF:
             from rest_framework.views import APIView

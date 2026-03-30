@@ -3,13 +3,15 @@
 import pytest
 from django.test import AsyncClient
 
-from django_qp._compat import HAS_DRF
+from django_qp._compat import HAS_DRF, HAS_PYDANTIC
 
 drf_required = pytest.mark.skipif(not HAS_DRF, reason="DRF not installed")
+pydantic_required = pytest.mark.skipif(not HAS_PYDANTIC, reason="pydantic not installed")
 
 pytestmark = pytest.mark.asyncio
 
 
+@pydantic_required
 class TestAsyncDjangoMixin:
     """Test async Django CBVs with the mixin."""
 
@@ -26,7 +28,8 @@ class TestAsyncDjangoMixin:
         response = await client.get("/async-test/?name=John&age=invalid")
         assert response.status_code == 422
         error_data = response.json()
-        assert "age" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "age" in field_names
 
     async def test_missing_required_param(self) -> None:
         """Test async Django view with missing required parameter."""
@@ -34,10 +37,11 @@ class TestAsyncDjangoMixin:
         response = await client.get("/async-test/?age=25")
         assert response.status_code == 422
         error_data = response.json()
-        assert "name" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "name" in field_names
 
 
-@drf_required
+@pytest.mark.skipif(not HAS_PYDANTIC or not HAS_DRF, reason="pydantic and DRF required")
 class TestAsyncDRFMixin:
     """Test async DRF CBVs with the mixin."""
 
@@ -57,4 +61,5 @@ class TestAsyncDRFMixin:
         response = await client.get("/api/async-test/?name=John&age=invalid")
         assert response.status_code == 422
         error_data = response.json()
-        assert "age" in error_data["errors"]
+        field_names = [e["field"] for e in error_data["errors"]]
+        assert "age" in field_names

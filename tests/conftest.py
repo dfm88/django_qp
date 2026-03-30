@@ -6,50 +6,15 @@ from typing import Any, ClassVar, cast
 
 from django.http import HttpRequest, HttpResponse
 from django.views import View
-from pydantic import BaseModel, Field
 
 from django_qp import EnhancedHttpRequest
-from django_qp._compat import HAS_DRF
+from django_qp._compat import HAS_DRF, HAS_MSGSPEC, HAS_PYDANTIC
 from django_qp.decorators import validate_query_params
 from django_qp.mixins import QueryParamsMixinView
 
 # Add the project root directory to the Python path
 ROOT_DIR = Path(__file__).parent
 sys.path.insert(0, str(ROOT_DIR))
-
-
-# Test Pydantic models
-class MockParams(BaseModel):
-    """Mock Pydantic model for testing."""
-
-    name: str
-    age: int = Field(ge=0)
-    tags: list[str] | None = None
-
-
-class MockParams2(MockParams):
-    """Extended mock params for testing method-specific validation."""
-
-
-class GetQueryParams(BaseModel):
-    """Mock Pydantic model for GET requests."""
-
-    filter: str
-    sort_by: str | None = None
-
-
-class PostQueryParams(BaseModel):
-    """Mock Pydantic model for POST requests."""
-
-    data: str
-    priority: int = Field(ge=1, le=5)
-
-
-class MockViewSetParams(BaseModel):
-    """Mock Pydantic model for testing."""
-
-    sort: str
-    page: int = Field(ge=1)
 
 
 class NotPydanticModel:
@@ -59,60 +24,129 @@ class NotPydanticModel:
     age: int
 
 
-# Test Views
-class MockBasicDjangoView(QueryParamsMixinView[MockParams], View):
-    """Mock implementation of a basic Django view with query parameter validation."""
+if HAS_PYDANTIC:
+    from pydantic import BaseModel, Field
 
-    def get_query_params_class(self, action: str | None) -> type[MockParams] | None:
-        """Return MockParams for GET, MockParams2 for POST."""
-        if action == "get":
-            return MockParams
-        elif action == "post":
-            return MockParams2
-        return None
+    # Test Pydantic models
+    class MockParams(BaseModel):
+        """Mock Pydantic model for testing."""
 
-    def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        """Mock implementation of a Django view get method."""
-        params: MockParams | None = self.validated_params
-        assert isinstance(params, MockParams)
+        name: str
+        age: int = Field(ge=0)
+        tags: list[str] | None = None
+
+    class MockParams2(MockParams):
+        """Extended mock params for testing method-specific validation."""
+
+    class GetQueryParams(BaseModel):
+        """Mock Pydantic model for GET requests."""
+
+        filter: str
+        sort_by: str | None = None
+
+    class PostQueryParams(BaseModel):
+        """Mock Pydantic model for POST requests."""
+
+        data: str
+        priority: int = Field(ge=1, le=5)
+
+    class MockViewSetParams(BaseModel):
+        """Mock Pydantic model for testing."""
+
+        sort: str
+        page: int = Field(ge=1)
+
+    # Test Views
+    class MockBasicDjangoView(QueryParamsMixinView[MockParams], View):
+        """Mock implementation of a basic Django view with query parameter validation."""
+
+        def get_query_params_class(self, action: str | None) -> type[MockParams] | None:
+            """Return MockParams for GET, MockParams2 for POST."""
+            if action == "get":
+                return MockParams
+            elif action == "post":
+                return MockParams2
+            return None
+
+        def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+            """Mock implementation of a Django view get method."""
+            params: MockParams | None = self.validated_params
+            assert isinstance(params, MockParams)
+            return HttpResponse(f"name={params.name}, age={params.age}")
+
+        def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+            """Mock implementation of a Django view post method."""
+            params: MockParams | None = self.validated_params
+            assert isinstance(params, MockParams2)
+            return HttpResponse(f"name={params.name}, age={params.age}, tags={params.tags}")
+
+    @validate_query_params(MockParams)
+    def function_view(request: EnhancedHttpRequest[MockParams]) -> HttpResponse:
+        """Mock implementation of a function-based view."""
+        params = request.validated_params
         return HttpResponse(f"name={params.name}, age={params.age}")
 
-    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        """Mock implementation of a Django view post method."""
-        params: MockParams | None = self.validated_params
-        assert isinstance(params, MockParams2)
-        return HttpResponse(f"name={params.name}, age={params.age}, tags={params.tags}")
+    # Method-specific validation test views
+    @validate_query_params(
+        {
+            "get": GetQueryParams,
+            "post": PostQueryParams,
+            "": MockParams,  # Default fallback
+        },
+    )
+    def method_specific_view(request: HttpRequest) -> HttpResponse:
+        """Handle requests with method-specific validation models."""
+        if request.method == "GET":
+            params = request.validated_params  # Type hint not ideal here because it depends on method
+            return HttpResponse(f"filter={params.filter}, sort_by={params.sort_by or 'default'}")
+        elif request.method == "POST":
+            params = request.validated_params
+            return HttpResponse(f"data={params.data}, priority={params.priority}")
+        else:
+            params = request.validated_params
+            return HttpResponse(f"name={params.name}, age={params.age}")
 
+    # --- Async pydantic views ---
 
-@validate_query_params(MockParams)
-def function_view(request: EnhancedHttpRequest[MockParams]) -> HttpResponse:
-    """Mock implementation of a function-based view."""
-    params = request.validated_params
-    return HttpResponse(f"name={params.name}, age={params.age}")
+    class AsyncMockBasicDjangoView(QueryParamsMixinView[MockParams], View):
+        """Async Django view with query parameter validation."""
 
+        def get_query_params_class(self, action: str | None) -> type[MockParams] | None:
+            """Return MockParams for GET."""
+            if action == "get":
+                return MockParams
+            return None
 
-# Method-specific validation test views
-@validate_query_params(
-    {
-        "get": GetQueryParams,
-        "post": PostQueryParams,
-        "": MockParams,  # Default fallback
-    },
-)
-def method_specific_view(request: HttpRequest) -> HttpResponse:
-    """Handle requests with method-specific validation models."""
-    if request.method == "GET":
-        params = request.validated_params  # Type hint not ideal here because it depends on method
-        return HttpResponse(f"filter={params.filter}, sort_by={params.sort_by or 'default'}")
-    elif request.method == "POST":
+        async def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+            """Async GET handler."""
+            params: MockParams | None = self.validated_params
+            assert isinstance(params, MockParams)
+            return HttpResponse(f"async: name={params.name}, age={params.age}")
+
+    @validate_query_params(MockParams)
+    async def async_function_view(request: EnhancedHttpRequest[MockParams]) -> HttpResponse:
+        """Async function-based view with validation."""
         params = request.validated_params
-        return HttpResponse(f"data={params.data}, priority={params.priority}")
-    else:
-        params = request.validated_params
-        return HttpResponse(f"name={params.name}, age={params.age}")
+        return HttpResponse(f"async: name={params.name}, age={params.age}")
+
+    @validate_query_params(
+        {
+            "get": GetQueryParams,
+            "post": PostQueryParams,
+        },
+    )
+    async def async_method_specific_view(request: HttpRequest) -> HttpResponse:
+        """Async function-based view with method-specific validation."""
+        if request.method == "GET":
+            params = request.validated_params
+            return HttpResponse(f"async: filter={params.filter}, sort_by={params.sort_by or 'default'}")
+        elif request.method == "POST":
+            params = request.validated_params
+            return HttpResponse(f"async: data={params.data}, priority={params.priority}")
+        return HttpResponse("async: no params")
 
 
-if HAS_DRF:
+if HAS_PYDANTIC and HAS_DRF:
     from rest_framework.decorators import action, api_view
     from rest_framework.response import Response
     from rest_framework.views import APIView
@@ -315,51 +349,7 @@ if HAS_DRF:
                 },
             )
 
-
-# --- Async views ---
-
-
-class AsyncMockBasicDjangoView(QueryParamsMixinView[MockParams], View):
-    """Async Django view with query parameter validation."""
-
-    def get_query_params_class(self, action: str | None) -> type[MockParams] | None:
-        """Return MockParams for GET."""
-        if action == "get":
-            return MockParams
-        return None
-
-    async def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        """Async GET handler."""
-        params: MockParams | None = self.validated_params
-        assert isinstance(params, MockParams)
-        return HttpResponse(f"async: name={params.name}, age={params.age}")
-
-
-@validate_query_params(MockParams)
-async def async_function_view(request: EnhancedHttpRequest[MockParams]) -> HttpResponse:
-    """Async function-based view with validation."""
-    params = request.validated_params
-    return HttpResponse(f"async: name={params.name}, age={params.age}")
-
-
-@validate_query_params(
-    {
-        "get": GetQueryParams,
-        "post": PostQueryParams,
-    },
-)
-async def async_method_specific_view(request: HttpRequest) -> HttpResponse:
-    """Async function-based view with method-specific validation."""
-    if request.method == "GET":
-        params = request.validated_params
-        return HttpResponse(f"async: filter={params.filter}, sort_by={params.sort_by or 'default'}")
-    elif request.method == "POST":
-        params = request.validated_params
-        return HttpResponse(f"async: data={params.data}, priority={params.priority}")
-    return HttpResponse("async: no params")
-
-
-if HAS_DRF:
+    # --- Async DRF views ---
 
     class AsyncMockBasicDRFView(QueryParamsMixinView, APIView):
         """Async DRF APIView with query parameter validation."""
@@ -376,3 +366,39 @@ if HAS_DRF:
                     "tags": params.tags,
                 },
             )
+
+
+# --- Msgspec test models and views ---
+
+if HAS_MSGSPEC:
+    import msgspec
+
+    class MsgspecMockParams(msgspec.Struct):
+        """Mock msgspec model for testing."""
+
+        name: str
+        age: int
+        tags: list[str] | None = None
+
+    class MsgspecGetParams(msgspec.Struct):
+        """Mock msgspec model for GET requests."""
+
+        filter: str
+        sort_by: str | None = None
+
+    class MsgspecMockBasicDjangoView(QueryParamsMixinView[MsgspecMockParams], View):
+        """Mock Django view using msgspec for query parameter validation."""
+
+        validated_params_model = MsgspecMockParams
+
+        def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+            """Mock implementation of a Django view get method."""
+            params = self.validated_params
+            assert isinstance(params, MsgspecMockParams)
+            return HttpResponse(f"name={params.name}, age={params.age}")
+
+    @validate_query_params(MsgspecMockParams)
+    def msgspec_function_view(request: EnhancedHttpRequest) -> HttpResponse:  # type: ignore[type-arg]
+        """Mock function-based view using msgspec."""
+        params = request.validated_params
+        return HttpResponse(f"name={params.name}, age={params.age}")
