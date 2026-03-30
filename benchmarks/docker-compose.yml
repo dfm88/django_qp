@@ -1,0 +1,12 @@
+services:
+  benchmark:
+    build:
+      context: ..
+      dockerfile: benchmarks/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 512M
+    volumes:
+      - ./results:/app/results
