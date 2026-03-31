@@ -91,7 +91,7 @@ jobs:
         run: |
           uv venv
           uv pip install "django${{ matrix.django }}" "pydantic${{ matrix.pydantic || '>=2.0' }}" \
-            "pytest>=8.3.5" "pytest-asyncio>=0.23" "pytest-django>=4.10.0" \
+            "pytest>=8.3.5" "pytest-cov>=6.0.0" "pytest-asyncio>=0.23" "pytest-django>=4.10.0" \
             -e "."
 
       - name: Install DRF
@@ -99,4 +99,12 @@ jobs:
         run: uv pip install "djangorestframework>=3.15.2"
 
       - name: Run tests
-        run: .venv/bin/pytest
+        run: .venv/bin/pytest --cov --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python == '3.13' && matrix.django-label == '5.2' && matrix.drf
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          fail_ci_if_error: false

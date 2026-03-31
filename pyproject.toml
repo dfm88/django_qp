@@ -123,6 +123,13 @@ disallow_untyped_defs = false
 check_untyped_defs = false
 
 
+[tool.coverage.run]
+source = ["django_qp"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+
 [project.urls]
 Homepage = "https://github.com/dfm88/django_qp"
 Repository = "https://github.com/dfm88/django_qp"

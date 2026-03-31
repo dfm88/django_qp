@@ -1,6 +1,7 @@
 # Django QP
 
 [![CI](https://github.com/dfm88/django_qp/actions/workflows/ci.yml/badge.svg)](https://github.com/dfm88/django_qp/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/dfm88/django_qp/branch/main/graph/badge.svg)](https://codecov.io/gh/dfm88/django_qp)
 [![PyPI](https://img.shields.io/pypi/v/django-qp)](https://pypi.org/project/django-qp/)
 [![Python](https://img.shields.io/pypi/pyversions/django-qp)](https://pypi.org/project/django-qp/)
 [![Django](https://img.shields.io/badge/django-4.2%20%7C%205.0%20%7C%205.1%20%7C%205.2-blue)](https://pypi.org/project/django-qp/)
@@ -62,6 +63,8 @@ A lightweight library for Django and Django Rest Framework that enables validati
 - Django >= 4.2, < 7.0
 - Pydantic >= 2.0
 - Django REST Framework >= 3.15.2 (**optional**)
+
+> **Older Django versions:** For Django 3.2 support (without async views), use `pip install django-qp==0.1.0`.
 
 ## Why use this library?
 
